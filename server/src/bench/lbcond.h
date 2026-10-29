@@ -7,6 +7,8 @@
 
 #include <stdint.h>
 
+#include "../hw/rpifw.h"
+
 typedef struct {
     double temp_c;                  /* the hottest thermal zone or CPU hwmon sensor, °C; < -270 unknown */
     double passive_c, critical_c;   /* the lowest passive and critical trip points, °C; 0 unknown */
@@ -33,14 +35,10 @@ void lb_cond_read(const char *root, LbCond *c);
  * does, every 2 s). LB_RPI_HOT is ours: on a Pi, the hottest zone at or above LB_RPI_FW_TEMP_C, where Raspberry
  * Pi's documentation says the firmware starts slowing the ARM cores down. */
 enum { LB_RPI_UV = 1, LB_RPI_CAPPED = 2, LB_RPI_THROTTLED = 4, LB_RPI_SOFTTEMP = 8, LB_RPI_HOT = 16 };
-#define LB_RPI_NOW_MASK    0x0000fu
-#define LB_RPI_STICKY_MASK 0xf0000u
+#define LB_RPI_NOW_MASK    RPIFW_NOW_MASK
+#define LB_RPI_STICKY_MASK RPIFW_STICKY_MASK
 #define LB_RPI_SLOWED      (LB_RPI_CAPPED | LB_RPI_THROTTLED | LB_RPI_SOFTTEMP | LB_RPI_HOT)
 #define LB_RPI_FW_TEMP_C   80.0
-
-/* get_throttled's text, strictly: 1-8 hex digits (an optional 0x), an optional newline, nothing else; the
- * value masked to the eight known bits, or -1 */
-int lb_rpi_parse_throttled(const char *s);
 
 /* What the Pi firmware reported during a run, sample by sample. A sticky bit (or the hwmon alarm) already set
  * at the start may predate the run, so it counts only once it was seen clear and then set again; the "now"

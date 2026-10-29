@@ -562,7 +562,11 @@ LordBench and a desktop that stays smooth under load. Each item is described in 
 - [ ] The interface workloads measured on the Pi 5 (its reference lists them as not measured).
 - [ ] The x86 PC reference (a modest PC still to be chosen; may move to 0.8.7).
 - [ ] Hardware video decoding (may move after 0.8.6).
-- [ ] Detecting the Pi 5 firmware's throttling.
+- [ ] Detecting the Pi 5 firmware's throttling. *Built, waiting for the check on a real Pi (2026-10-28/29):* the
+  LordOS kernel (`rpi-6.18.y`) only exposes the firmware's under-voltage alarm (`rpi_volt`'s `in0_lcrit_alarm`, the
+  last 2 s), not its capped, throttled or soft-limit bits, so LordBench watches that alarm and `get_throttled` where
+  an older kernel has it, and counts 80 °C on a Pi as the firmware's limit (peak tests stop as throttled); System
+  Information's Raspberry Pi rows read the same way through the shared `hw/rpifw.c`. Tested on fake sysfs trees only.
 
 **The desktop under load** (`BENCHMARK.md`, "The desktop under load"; `GPU.md`). On the Pi 5 with its monitor the
 desktop fell to 24 fps under an all-core load:
@@ -756,7 +760,8 @@ desktop fell to 24 fps under an all-core load:
   into the helper; VM 116: 37.0 and 39.9 fps, 619 and 3,595 runs/s), and the helper-sandbox self-test inside
   `lord-bench` (six tries that must fail, checked by the Stability verdict and `lordos-sysreport bench`). Left:
   hardware video decoding, the x86 PC reference, measuring the Pi 5 with the interface workloads (its reference
-  lists them as not measured), detecting the Pi 5 firmware's throttling, and the rest of what it found on the Pi 5 (the desktop fell to 24 fps under load;
+  lists them as not measured), checking the Pi 5 firmware's throttling detection on a real Pi (built on fake sysfs
+  trees: the LordOS kernel only exposes the under-voltage alarm, so 80 °C counts as the firmware's limit), and the rest of what it found on the Pi 5 (the desktop fell to 24 fps under load;
   the compositor's CPU weight and its real-time priority fix it on VM 116; on the Pi 5 with its monitor they take it
   to 29–30 fps and the frame's own build time under load, 15–16 ms instead of 7, is what remains to find,
   `BENCHMARK.md` "The desktop under load").

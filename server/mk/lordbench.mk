@@ -6,7 +6,7 @@
 # bench/lbui.c, with their fonts built in) and, with GPU=1, Mesa (GBM, EGL, GLESv2); nothing else.
 LB_SRV_SRC := src/bench/lbrun.c src/bench/lbcond.c src/bench/lbproto.c src/bench/bench.c src/bench/lbframes.c src/bench/lbvideo.c src/bench/lbinput.c
 LB_SRV_OBJ := $(LB_SRV_SRC:src/%.c=build/obj/%.o)
-$(LB_SRV_OBJ): $(wildcard src/bench/*.h) src/media/proto.h build/gen/lord_version.h
+$(LB_SRV_OBJ): $(wildcard src/bench/*.h) src/hw/rpifw.h src/media/proto.h build/gen/lord_version.h
 build/obj/main.o: src/bench/lbframes.h src/bench/lbinput.h
 build/obj/ui/grab.o: src/bench/lbinput.h
 build/lord-server: $(LB_SRV_OBJ)
@@ -52,17 +52,17 @@ build/lord-bench: $(LB_SRC) $(LB_GL_SRC) build/obj/ui/stb.o $(QJS_OBJ) build/gen
 # self-test's included), the thermal guard on fake sysfs trees and the boot history
 test: build/lordbench-test
 build/lordbench-test: tests/lordbench_test.c src/bench/lbwork.c src/bench/lbui.c src/bench/lbproto.c src/bench/lbcond.c src/bench/lbrun.c src/bench/bench.c \
-                      src/bench/lbframes.c src/bench/lbinput.c src/bench/lbvideo.c src/bench/boottest.c src/media/proto.c src/pkg/crypto.c src/pkg/xz.c src/hw/jbuf.c src/sec/json.c build/obj/ui/stb.o $(QJS_OBJ) build/gen/lb_corpus.h \
-                      build/gen/lb_fonts.h build/gen/lord_version.h $(wildcard src/bench/*.h) $(ENGINE_SRC) $(HDR)
+                      src/bench/lbframes.c src/bench/lbinput.c src/bench/lbvideo.c src/bench/boottest.c src/media/proto.c src/pkg/crypto.c src/pkg/xz.c src/hw/rpifw.c src/hw/jbuf.c src/sec/json.c build/obj/ui/stb.o $(QJS_OBJ) build/gen/lb_corpus.h \
+                      build/gen/lb_fonts.h build/gen/lord_version.h $(wildcard src/bench/*.h) src/hw/rpifw.h $(ENGINE_SRC) $(HDR)
 	@mkdir -p build
 	$(CC) $(CPPFLAGS) $(CFLAGS) $(WARN) -std=c11 -o $@ tests/lordbench_test.c src/bench/lbwork.c src/bench/lbui.c src/bench/lbproto.c src/bench/lbcond.c \
-	    src/bench/lbrun.c src/bench/bench.c src/bench/lbframes.c src/bench/lbinput.c src/bench/lbvideo.c src/bench/boottest.c src/media/proto.c src/pkg/crypto.c src/pkg/xz.c src/hw/jbuf.c src/sec/json.c \
+	    src/bench/lbrun.c src/bench/bench.c src/bench/lbframes.c src/bench/lbinput.c src/bench/lbvideo.c src/bench/boottest.c src/media/proto.c src/pkg/crypto.c src/pkg/xz.c src/hw/rpifw.c src/hw/jbuf.c src/sec/json.c \
 	    $(ENGINE_SRC) build/obj/ui/stb.o $(QJS_OBJ) -lm -lpthread
 	./$@ || { rm -f $@; exit 1; }
 # from a terminal, without a session: build/lordbench-cli quick|full [sustained_s] (needs build/lord-bench, and build/lord-media
 # for the video measurements; desktop mode needs a session: without one its frame results are skipped)
 LB_CLI_SRC := tests/lordbench_cli.c src/bench/lbrun.c src/bench/lbcond.c src/bench/lbproto.c src/bench/bench.c src/bench/lbframes.c \
-              src/bench/lbvideo.c src/bench/boottest.c src/media/proto.c src/hw/jbuf.c src/sec/json.c
+              src/bench/lbvideo.c src/bench/boottest.c src/media/proto.c src/hw/rpifw.c src/hw/jbuf.c src/sec/json.c
 build/lordbench-cli: $(LB_CLI_SRC) \
                      build/gen/lord_version.h $(wildcard src/bench/*.h) build/lord-bench
 	$(CC) $(CPPFLAGS) $(CFLAGS) $(WARN) -std=c11 -o $@ $(LB_CLI_SRC) -lm -lpthread

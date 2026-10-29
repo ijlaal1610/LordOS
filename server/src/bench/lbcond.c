@@ -73,15 +73,6 @@ static void hwmon(const char *root, LbCond *c) {
         char p[96], name[24] = "";
         snprintf(p, sizeof p, "/sys/class/hwmon/%s/name", e->d_name);
         if (rd(root, p, name, sizeof name)) continue;
-        if (!strcmp(name, "rpi_volt")) {
-            /* the Pi firmware's under-voltage alarm (drivers/hwmon/raspberrypi-hwmon.c): GET_THROTTLED's sticky
-             * under-voltage bit, asked every 2 s with the sticky bits cleared each time; "0" or "1" only */
-            char v[8];
-            snprintf(p, sizeof p, "/sys/class/hwmon/%s/in0_lcrit_alarm", e->d_name);
-            c->rpi = 1;
-            if (!rd(root, p, v, sizeof v) && (!strcmp(v, "0") || !strcmp(v, "1"))) c->rpi_uv_alarm = v[0] - '0';
-            continue;
-        }
         if (strcmp(name, "coretemp") && strcmp(name, "k10temp") && strcmp(name, "zenpower")) continue;
         for (int i = 1; i < 64; i++) {
             snprintf(p, sizeof p, "/sys/class/hwmon/%s/temp%d_input", e->d_name, i);
@@ -129,41 +120,14 @@ static void cpus(const char *root, LbCond *c) {
     rd(root, "/sys/devices/system/cpu/cpu0/cpufreq/scaling_governor", c->governor, sizeof c->governor);
 }
 
-int lb_rpi_parse_throttled(const char *s) {
-    if (!s) return -1;
-    if (s[0] == '0' && (s[1] == 'x' || s[1] == 'X')) s += 2;
-    unsigned long v = 0;
-    int n = 0;
-    for (; *s && *s != '\n'; s++, n++) {
-        int d = *s >= '0' && *s <= '9' ? *s - '0' : *s >= 'a' && *s <= 'f' ? *s - 'a' + 10 : *s >= 'A' && *s <= 'F' ? *s - 'A' + 10 : -1;
-        if (d < 0 || n >= 8) return -1;
-        v = v << 4 | (unsigned long)d;
-    }
-    if (!n || (*s == '\n' && s[1])) return -1;
-    return (int)(v & (LB_RPI_NOW_MASK | LB_RPI_STICKY_MASK));
-}
-
-/* the Pi firmware's get_throttled (drivers/firmware/raspberrypi.c of older Raspberry Pi kernels; the rpi-6.18.y
- * one LordOS ships has no such file and reports through rpi_volt instead): directly under a platform node or in
- * its "<node>:firmware" child (soc/soc:firmware, axi/axi:firmware, soc@107c000000/soc@107c000000:firmware) */
+/* the Pi firmware: rpi_volt's alarm and get_throttled (hw/rpifw.c, shared with System Information), or the
+ * device tree */
 static void rpi(const char *root, LbCond *c) {
-    char d[PATH_MAX];
-    snprintf(d, sizeof d, "%s/sys/devices/platform", root);
-    DIR *dir = opendir(d);
-    if (dir) {
-        struct dirent *e;
-        while (c->rpi_throttled < 0 && (e = readdir(dir))) {
-            if (e->d_name[0] == '.' || strlen(e->d_name) > 64) continue;
-            char p[256], b[32];
-            for (int i = 0; i < 2 && c->rpi_throttled < 0; i++) {
-                if (i) snprintf(p, sizeof p, "/sys/devices/platform/%s/%s:firmware/get_throttled", e->d_name, e->d_name);
-                else snprintf(p, sizeof p, "/sys/devices/platform/%s/get_throttled", e->d_name);
-                if (!rd(root, p, b, sizeof b)) c->rpi_throttled = lb_rpi_parse_throttled(b);
-            }
-        }
-        closedir(dir);
-    }
-    if (c->rpi_throttled >= 0) c->rpi = 1;
+    RpiFw fw;
+    rpifw_read(root, &fw);
+    c->rpi_uv_alarm = fw.uv_alarm;
+    c->rpi_throttled = fw.throttled;
+    if (fw.hwmon || fw.throttled >= 0) c->rpi = 1;
     if (c->rpi) return;
     /* the device tree's root compatible ("raspberrypi,5-model-b\0brcm,bcm2712\0"), so a Pi without the hwmon
      * module still gets LB_RPI_HOT */

@@ -303,12 +303,12 @@ int main(void) {
     CHECK(!lb_cpu_ticks(root, &busy, &total) && total == 1000 && busy == 150, "/proc/stat %llu/%llu", busy, total);
 
     /* get_throttled's text, strictly */
-    CHECK(lb_rpi_parse_throttled("0\n") == 0 && lb_rpi_parse_throttled("50005") == 0x50005 && lb_rpi_parse_throttled("0x8000A\n") == 0x8000a,
+    CHECK(rpifw_parse_throttled("0\n") == 0 && rpifw_parse_throttled("50005") == 0x50005 && rpifw_parse_throttled("0x8000A\n") == 0x8000a,
           "get_throttled: plain, 0x and upper-case hex");
-    CHECK(lb_rpi_parse_throttled("fffffff0") == 0xf0000, "get_throttled: unknown bits dropped (%#x)", lb_rpi_parse_throttled("fffffff0"));
-    CHECK(lb_rpi_parse_throttled("") < 0 && lb_rpi_parse_throttled("0x") < 0 && lb_rpi_parse_throttled("123456789") < 0 &&
-          lb_rpi_parse_throttled(" 5") < 0 && lb_rpi_parse_throttled("5 ") < 0 && lb_rpi_parse_throttled("-1") < 0 &&
-          lb_rpi_parse_throttled("g") < 0 && lb_rpi_parse_throttled("5\nx") < 0 && lb_rpi_parse_throttled(NULL) < 0,
+    CHECK(rpifw_parse_throttled("fffffff0") == 0xf0000, "get_throttled: unknown bits dropped (%#x)", rpifw_parse_throttled("fffffff0"));
+    CHECK(rpifw_parse_throttled("") < 0 && rpifw_parse_throttled("0x") < 0 && rpifw_parse_throttled("123456789") < 0 &&
+          rpifw_parse_throttled(" 5") < 0 && rpifw_parse_throttled("5 ") < 0 && rpifw_parse_throttled("-1") < 0 &&
+          rpifw_parse_throttled("g") < 0 && rpifw_parse_throttled("5\nx") < 0 && rpifw_parse_throttled(NULL) < 0,
           "get_throttled: empty, too long, spaces, signs, other letters and a second line refused");
 
     /* a Raspberry Pi 5 with the kernel LordOS ships (rpi-6.18.y): no get_throttled, only rpi_volt's alarm (cleared

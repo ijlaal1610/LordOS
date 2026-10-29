@@ -127,6 +127,29 @@ export function throttleFlags(v) {
   };
 }
 
+// The Raspberry Pi section's power and throttling rows, as locale keys under sysinfo.pi (null: the kernel
+// doesn't tell, so the row is left out). `throttled` is get_throttled (older kernels only); `underVoltageAlarm`
+// rpi_volt's alarm, the only one the LordOS kernel has. rpi_volt clears the sticky bits every 2 s, so with it
+// they mean "in the last few seconds", never "since boot".
+export function piStatus(pi) {
+  if (!pi) return { power: null, throttling: null };
+  const f = throttleFlags(pi.throttled);
+  const alarm = typeof pi.underVoltageAlarm === 'boolean' ? pi.underVoltageAlarm : null;
+  const recent = alarm !== null;
+  let power = null;
+  let throttling = null;
+  if (f) {
+    power = f.underVoltageNow ? 'underVoltageNow' : f.underVoltage ? (recent ? 'underVoltageRecent' : 'underVoltageSeen')
+      : recent ? 'powerOkRecent' : 'powerOk';
+    throttling = f.throttledNow || f.cappedNow || f.softLimitNow ? 'throttledNow'
+      : f.throttled || f.capped || f.softLimit ? (recent ? 'throttledRecent' : 'throttledSeen')
+        : recent ? 'throttleOkRecent' : 'throttleOk';
+  } else if (recent) {
+    power = alarm ? 'underVoltageRecent' : 'powerOkRecent';
+  }
+  return { power, throttling };
+}
+
 // A machine's one-line name: vendor and product, the device tree model, or the hypervisor.
 export function machineName(r) {
   const m = (r && r.machine) || {};

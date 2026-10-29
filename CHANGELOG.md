@@ -156,7 +156,7 @@ of the matching [GitHub release](https://github.com/lordbasex/LordOS/releases), 
     `in0_lcrit_alarm` (0444), "under-voltage in the last 2 s"; the capped, throttled and soft-limit bits are not
     exposed without the mailbox, which LordBench never opens. So lord-server now: reads the alarm strictly (`0` or
     `1`); still reads `get_throttled` where an older kernel has it, strictly (1-8 hex digits, optional `0x`,
-    `lb_rpi_parse_throttled`, masked to bits 0-3 "now" and 16-19 "has occurred"; anything else is unknown instead of
+    `rpifw_parse_throttled`, masked to bits 0-3 "now" and 16-19 "has occurred"; anything else is unknown instead of
     being half-parsed); knows a Pi from that hwmon, that file or the device tree's `raspberrypi,` compatible; and on a
     Pi counts the hottest zone at or above 80 °C as the firmware's limit (Raspberry Pi documents progressive Arm
     throttling from 80 °C; the Pi 5's thermal zone has no passive trip, so before this the guard waited for 100 °C).
@@ -191,6 +191,36 @@ of the matching [GitHub release](https://github.com/lordbasex/LordOS/releases), 
 
 ### Fixed
 
+- **System Information's Raspberry Pi power and throttling rows** (2026-10-29; `server/src/hw/rpifw.c`,
+  `sysreport/sysreport.c`, `apps/sysinfo`; tested on fake sysfs trees and VM 116, **not yet on a real Pi**): the
+  collector looked only for the firmware's `get_throttled` (`soc@107c000000:firmware` on the Pi 5), which the
+  `rpi-6.18.y` kernel LordOS ships doesn't have, so on a Pi 5 with LordOS the Power and Throttling rows were always
+  empty (and the Markdown report said nothing). System Information now reads the firmware the same way LordBench's
+  guards do, from one shared reader, **`hw/rpifw.c`** (`rpifw_read`, `rpifw_parse_throttled`; linked into
+  lord-server, `lordos-sysreport` and both tests; `bench/lbcond.c` uses it instead of its own copy): the `rpi_volt`
+  hwmon's `in0_lcrit_alarm`, exactly `0` or `1` (with an optional newline; anything else is unknown), and
+  `get_throttled` where an older kernel has it (directly under a `/sys/devices/platform` node or its
+  `<node>:firmware` child), strictly parsed (1-8 hex digits, optional `0x`, one optional newline, masked to the
+  eight known bits). World-readable sysfs only: no mailbox, no `vcgencmd`, no exec. What the kernel shows is
+  reported and what it doesn't is left out:
+  - **The LordOS kernel (rpi_volt only):** the Power row says "No under-voltage in the last few seconds" or
+    "Under-voltage in the last few seconds: use the official power supply" (the hwmon asks the firmware every 2 s and
+    clears the sticky bits, so it can't tell "since boot"); there is **no Throttling row** (the kernel doesn't expose
+    the capped, throttled and soft-limit bits), never a false "never slowed down".
+  - **An older kernel with `get_throttled` and no `rpi_volt`:** the rows as before, "now" and "since boot", and the
+    soft temperature limit now counts as slowed down too.
+  - **Both:** the sticky bits only cover the last 2 s window (`rpi_volt` clears them), so the rows say "in the last
+    few seconds" instead of "since boot".
+  - **Neither, or a value that doesn't parse:** model and revision only.
+  The report's JSON `raspberryPi` gains `underVoltageAlarm` (`true`, `false` or `null`; `throttled` stays the raw
+  bits or `null`); the Markdown report says "no under-voltage in the last 2 s (rpi_volt); throttling not reported by
+  this kernel" on the LordOS kernel, and the now/since-boot/last-2-s wording with the raw bits on older ones. The
+  rows' choice is `piStatus` in `apps/sysinfo/model.js`. Four new strings (en, es, pt). Tests:
+  `tests/sysreport_test.c` (the Pi 5 fixture now has the LordOS kernel's `rpi_volt` and an empty
+  `soc@107c000000:firmware`; thirteen small trees: that kernel with the alarm clear, set, `yes`, `01` and missing; an
+  older Pi 4 and Pi 5 kernel with `get_throttled` set, clear and "now"; both sources; a malformed value and a second
+  line; a Pi with neither; a machine that isn't a Pi with both files; 790 checks) and
+  `tests/sysinfo_model_test.mjs` (`piStatus`, 68 checks). `build/lordbench-test` still passes (1,198 checks).
 - **The desktop under load** (found by LordBench's desktop test; `docs/BENCHMARK.md`, "The desktop under load"): the
   compositor's cgroup (`server`) had the same `cpu.weight` as every app scope, and nice values don't count between
   cgroups, so an app keeping every core busy took half of the compositor's CPU even at nice 19. On a Raspberry Pi 5

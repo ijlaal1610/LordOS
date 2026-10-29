@@ -167,6 +167,8 @@ char *sysreport_json(const SysReport *r) {
         jkey(&b, &f, "raspberryPi"); hb_printf(&b, "{"); g = 1;
         js(&b, &g, "model", r->pi.model); js(&b, &g, "revision", r->pi.revision);
         jn(&b, &g, "throttled", r->pi.throttled, -1);
+        if (r->pi.uv_alarm >= 0) jb(&b, &g, "underVoltageAlarm", r->pi.uv_alarm);
+        else { jkey(&b, &g, "underVoltageAlarm"); hb_printf(&b, "null"); }
         hb_printf(&b, "}");
     }
 
@@ -331,9 +333,19 @@ char *sysreport_markdown(const SysReport *r) {
 
     if (r->pi.is_pi) {
         hb_printf(&b, "## Raspberry Pi\n\n%s, revision %s", r->pi.model, r->pi.revision[0] ? r->pi.revision : "unknown");
-        if (r->pi.throttled >= 0)
-            hb_printf(&b, "; %s (0x%x)", r->pi.throttled == 0 ? "never throttled or under-voltage since boot"
-                      : (r->pi.throttled & 0x50005) ? "under-voltage or throttling seen" : "flags set", (unsigned)r->pi.throttled);
+        /* rpi_volt clears the sticky bits every 2 s, so with it they cover that window, not the time since boot */
+        const char *since = r->pi.uv_alarm >= 0 ? "in the last 2 s" : "since boot";
+        if (r->pi.throttled >= 0) {
+            unsigned v = (unsigned)r->pi.throttled;
+            hb_printf(&b, "; %s", v & 0x1u ? "under-voltage now" : v & 0x10000u ? "under-voltage" : "no under-voltage");
+            if (!(v & 0x1u)) hb_printf(&b, " %s", since);
+            hb_printf(&b, "; %s", v & 0xeu ? "slowed down now" : v & 0xe0000u ? "slowed down" : "not slowed down");
+            if (!(v & 0xeu)) hb_printf(&b, " %s", since);
+            hb_printf(&b, " (get_throttled 0x%x)", v);
+        } else if (r->pi.uv_alarm >= 0) {
+            hb_printf(&b, "; %s in the last 2 s (rpi_volt); throttling not reported by this kernel",
+                      r->pi.uv_alarm ? "under-voltage" : "no under-voltage");
+        }
         hb_printf(&b, ".\n\n");
     }
 

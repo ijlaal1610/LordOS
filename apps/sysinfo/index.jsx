@@ -12,7 +12,7 @@ import { useMemo, useState } from 'react';
 import { evaluate as evaluateChecks, evaluateProbe, evaluateBench, PENDING as PENDING_CHECKS, PROBE_CHECKS } from './checks.js';
 import Performance from './performance.jsx';
 import { Scene } from './scene.jsx';
-import { cardLayers, sessionLayers, compatibility, hardwareSections, throttleFlags, machineName, compositionReason, reportFileName, reportJson, parseMemoryLines } from './model.js';
+import { cardLayers, sessionLayers, compatibility, hardwareSections, piStatus, machineName, compositionReason, reportFileName, reportJson, parseMemoryLines } from './model.js';
 
 // The app's icon: a chip on the brand gradient.
 export function Icon({ size: s }) {
@@ -244,13 +244,13 @@ function Section({ id, r }) {
       </GroupBox>);
     case 'raspberryPi': {
       const pi = r.raspberryPi;
-      const f = throttleFlags(pi.throttled);
+      const st = piStatus(pi);
       return (
         <GroupBox>
           <Row label={tr('sysinfo.f.model')} value={pi.model} />
           <Row label={tr('sysinfo.f.revision')} value={pi.revision} />
-          <Row label={tr('sysinfo.f.power')} value={!f ? '' : f.underVoltageNow ? tr('sysinfo.pi.underVoltageNow') : f.underVoltage ? tr('sysinfo.pi.underVoltageSeen') : tr('sysinfo.pi.powerOk')} />
-          <Row label={tr('sysinfo.f.throttling')} value={!f ? '' : f.throttledNow || f.cappedNow ? tr('sysinfo.pi.throttledNow') : f.throttled || f.capped ? tr('sysinfo.pi.throttledSeen') : tr('sysinfo.pi.throttleOk')} />
+          {st.power && <Row label={tr('sysinfo.f.power')} value={tr(`sysinfo.pi.${st.power}`)} />}
+          {st.throttling && <Row label={tr('sysinfo.f.throttling')} value={tr(`sysinfo.pi.${st.throttling}`)} />}
         </GroupBox>);
     }
     case 'software': return (

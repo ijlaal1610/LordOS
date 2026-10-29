@@ -61,7 +61,8 @@ microcode), memory (total, swap, zram; per module through the read-only admin ac
 `hw-memory-modules`), graphics, displays (monitor name and size from the EDID, mode, refresh,
 scale, card, scanout), storage (interface and link speed, size, SMART health), USB and
 Thunderbolt, PCI with drivers and missing firmware, audio, network, Bluetooth, power, thermal and
-fans, cameras and input, Raspberry Pi (revision, bootloader, throttling and under-voltage flags,
+fans, cameras and input, Raspberry Pi (revision, bootloader, the firmware's under-voltage alarm and, where the
+kernel exposes them, its throttling flags,
 fan header, kernel revision), software (Debian, kernel, the kernel options LordOS depends on, the
 LordOS services and their state, the code manifest).
 
@@ -349,7 +350,7 @@ development package.
   So lord-server reads, world-readable and without exec or root: `rpi_volt`'s `in0_lcrit_alarm` (exactly `0`
   or `1`, anything else is unknown); `get_throttled` where a kernel has it (directly under a
   `/sys/devices/platform` node or its `<node>:firmware` child; 1-8 hex digits with an optional `0x` and a
-  newline, nothing else, `lb_rpi_parse_throttled`; masked to the eight known bits: 0 under-voltage now, 1 ARM
+  newline, nothing else, `rpifw_parse_throttled`; masked to the eight known bits: 0 under-voltage now, 1 ARM
   frequency capped now, 2 throttled now, 3 soft temperature limit now, 16-19 the same "has occurred"); and
   whether the machine is a Pi at all (that hwmon, that file, or a `raspberrypi,` entry in the device tree's
   root `compatible`). On a Pi, the hottest zone at or above **80 °C** counts as the firmware's limit
@@ -374,6 +375,18 @@ development package.
   firmware" row listing what happened, or what was watched when nothing did. Machines that are not a Pi get no
   `piFirmware` and behave as before. Not verified on a real Pi yet: that the alarm reads `1` during an actual
   under-voltage, and how fast the Pi 5 reaches 80 °C without a cooler in the peak tests.
+
+  The reader is shared (`hw/rpifw.c`, `rpifw_read`: lord-server, `lordos-sysreport` and the tests link it), and
+  System Information's Raspberry Pi section uses it too (2026-10-29; before, it looked only for `get_throttled`, so on
+  the Pi 5 with the LordOS kernel its Power and Throttling rows were always empty). It shows what the kernel shows
+  and leaves out the rest: with only `rpi_volt` (the LordOS kernel), a Power row for the last few seconds ("No
+  under-voltage in the last few seconds" or "Under-voltage in the last few seconds: use the official power supply")
+  and no Throttling row; with only `get_throttled` (an older kernel), Power and Throttling "now" and "since boot";
+  with both, the sticky bits cover only the last 2 s window, so the rows say so; with neither, model and revision
+  only. The report's `raspberryPi` has `throttled` (the raw bits or `null`) and `underVoltageAlarm` (`true`,
+  `false` or `null`). Tested on fake sysfs trees (`tests/sysreport_test.c`: the LordOS kernel with the alarm clear,
+  set, malformed and missing; older Pi 4 and Pi 5 kernels with `get_throttled`; both; neither; a machine that isn't
+  a Pi), not yet on a real Pi.
 - **Helper-sandbox self-test** (`sec.helper-sandbox`, repeated inside `lord-bench`, `sandbox_tries` in
   `bench/lbmain.c`): right after `sandbox_apply_helper` and before any work, in every mode, `lord-bench` tries six
   things that must fail: the Sandbox Probe's helper tries (`app/probe.c`) with its own versions of the data-folder

@@ -146,7 +146,9 @@ typedef struct {
 
 typedef struct {
     char model[SR_NAME], revision[16];  /* /proc/cpuinfo "Revision" (the board code) */
-    int throttled;                      /* get_throttled bits, -1 unknown */
+    int throttled;                      /* get_throttled bits (hw/rpifw.h), -1 unknown (no such file: the
+                                         * LordOS rpi-6.18.y kernel has none) */
+    int uv_alarm;                       /* rpi_volt's under-voltage alarm: 1 in the last 2 s, 0 none, -1 unknown */
     int is_pi;
 } SrPi;
 

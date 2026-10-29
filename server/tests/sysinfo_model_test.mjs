@@ -2,7 +2,7 @@
 // the reasons for CPU composition, the Compatibility panel and the Hardware sections. Run by
 // tests/run_suites.sh (needs node).
 import { evaluate, evaluateProbe, evaluateBench, LIMITS } from '../../apps/sysinfo/checks.js';
-import { compositionReason, cardLayers, sessionLayers, compatibility, hardwareSections, throttleFlags, machineName, reportFileName, reportJson, parseMemoryLines } from '../../apps/sysinfo/model.js';
+import { compositionReason, cardLayers, sessionLayers, compatibility, hardwareSections, throttleFlags, piStatus, machineName, reportFileName, reportJson, parseMemoryLines } from '../../apps/sysinfo/model.js';
 
 let n = 0, bad = 0;
 const eq = (what, got, want) => {
@@ -80,6 +80,15 @@ eq('a Pi adds its section', hardwareSections({ raspberryPi: { model: 'Raspberry 
 eq('throttle 0x50000', throttleFlags(0x50000), { underVoltageNow: false, cappedNow: false, throttledNow: false, softLimitNow: false,
   underVoltage: true, capped: false, throttled: true, softLimit: false });
 eq('throttle unknown', [throttleFlags(null), throttleFlags(-1)], [null, null]);
+// the Pi's rows: the LordOS kernel only has rpi_volt's alarm (no throttling row), older ones get_throttled
+eq('pi: LordOS kernel, no alarm', piStatus({ underVoltageAlarm: false }), { power: 'powerOkRecent', throttling: null });
+eq('pi: LordOS kernel, alarm', piStatus({ underVoltageAlarm: true }), { power: 'underVoltageRecent', throttling: null });
+eq('pi: nothing readable', piStatus({ model: 'Raspberry Pi 5' }), { power: null, throttling: null });
+eq('pi: no section', piStatus(null), { power: null, throttling: null });
+eq('pi: old kernel, since boot', piStatus({ throttled: 0x50000 }), { power: 'underVoltageSeen', throttling: 'throttledSeen' });
+eq('pi: old kernel, clear', piStatus({ throttled: 0 }), { power: 'powerOk', throttling: 'throttleOk' });
+eq('pi: old kernel, now', piStatus({ throttled: 0x9 }), { power: 'underVoltageNow', throttling: 'throttledNow' });
+eq('pi: both, sticky bits are recent', piStatus({ throttled: 0x20000, underVoltageAlarm: false }), { power: 'powerOkRecent', throttling: 'throttledRecent' });
 eq('names', [machineName(vm), machineName({ machine: { model: 'Raspberry Pi 5 Model B Rev 1.0' } }), machineName({})], ['QEMU Standard PC', 'Raspberry Pi 5 Model B Rev 1.0', '']);
 
 // ---- the Report tab ----

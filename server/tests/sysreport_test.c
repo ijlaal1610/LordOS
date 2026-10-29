@@ -1,6 +1,7 @@
 /* sysreport_test.c — System Information's collector (src/sysreport) over fake trees: an AMD desktop,
- * an Intel laptop, an Nvidia desktop, a Raspberry Pi 5 and a VM. Each tree is full of things a report
- * must never carry (serial numbers, UUIDs, MAC addresses, a host name, a user name, a monitor's serial,
+ * an Intel laptop, an Nvidia desktop, a Raspberry Pi 5 (with the LordOS kernel) and a VM, and the Pi
+ * firmware's power and throttling on small trees (that kernel, an older one with get_throttled, both,
+ * neither, not a Pi). Each tree is full of things a report must never carry (serial numbers, UUIDs, MAC addresses, a host name, a user name, a monitor's serial,
  * a MAC inside an interface name); the test checks what each report finds, that its JSON is valid,
  * and that none of those values reaches the JSON or the Markdown.
  *
@@ -50,6 +51,11 @@ static void putn(const char *root, const char *rel, const void *data, int len) {
     fclose(f);
 }
 static void put(const char *root, const char *rel, const char *text) { putn(root, rel, text, -1); }
+static void mkdirs_in(const char *root, const char *rel) {
+    char p[1024];
+    snprintf(p, sizeof p, "%s/%s", root, rel);
+    mkdirs(p);
+}
 
 static void lnk(const char *root, const char *rel, const char *target) {
     char p[1024], d[1024];
@@ -336,7 +342,9 @@ static void fixture(const char *r, const char *kind) {
         conn(r, 1, "Writeback-1", 0, NULL, NULL);
         disk(r, "mmcblk0", "", "62333952\n", 0, NULL);
         disk(r, "mmcblk0boot0", "", "8192\n", 0, NULL);
-        put(r, "sys/devices/platform/soc@107c000000/soc@107c000000:firmware/get_throttled", "0x50000\n");
+        /* the LordOS rpi-6.18.y kernel: no get_throttled under soc@107c000000:firmware, only rpi_volt's alarm */
+        mkdirs_in(r, "sys/devices/platform/soc@107c000000/soc@107c000000:firmware");
+        put(r, "sys/class/hwmon/hwmon1/name", "rpi_volt\n"); put(r, "sys/class/hwmon/hwmon1/in0_lcrit_alarm", "0\n");
         put(r, "sys/block/zram0/disksize", "2147483648\n");
         put(r, "sys/block/zram0/comp_algorithm", "lzo lzo-rle lz4 [zstd]\n");
         put(r, "sys/class/hwmon/hwmon2/name", "pwmfan"); put(r, "sys/class/hwmon/hwmon2/fan1_input", "2900");
@@ -475,7 +483,8 @@ static void test_kind(const char *kind) {
         CHECK(r->cpu.cores == 10 && r->cpu.threads == 20 && !strcmp(r->machine.chassis, "desktop"), "nvidia: cpu/chassis");
         CHECK(!r->ndisplay && !contains(md, "## Displays"), "nvidia: no displays");
     } else if (!strcmp(kind, "rpi5")) {
-        CHECK(r->pi.is_pi && !strcmp(r->pi.revision, "d04170") && r->pi.throttled == 0x50000, "rpi5: pi %s %x", r->pi.revision, r->pi.throttled);
+        CHECK(r->pi.is_pi && !strcmp(r->pi.revision, "d04170") && r->pi.throttled == -1 && r->pi.uv_alarm == 0,
+              "rpi5: pi %s %x %d", r->pi.revision, r->pi.throttled, r->pi.uv_alarm);
         CHECK(!strcmp(r->machine.firmware, "dt") && !strcmp(r->machine.model, "Raspberry Pi 5 Model B Rev 1.0"), "rpi5: machine");
         CHECK(!strcmp(r->cpu.vendor, "ARM") && !strcmp(r->cpu.model, "Cortex-A76") && !strcmp(r->cpu.arch, "aarch64"), "rpi5: cpu %s %s", r->cpu.vendor, r->cpu.model);
         CHECK(!strcmp(r->cpu.flags, "asimd aes sha2 crc32 atomics"), "rpi5: features %s", r->cpu.flags);
@@ -484,7 +493,9 @@ static void test_kind(const char *kind) {
         CHECK(r->ndisplay == 1 && !strcmp(r->display[0].card, "card1") && !strcmp(r->display[0].name, "LS27A600U"), "rpi5: display");
         CHECK(r->ndisk == 1 && !strcmp(r->disk[0].transport, "mmc"), "rpi5: sd card (boot partitions skipped)");
         CHECK(r->mem.zram_n == 1 && r->mem.zram_kb[0] == 2097152 && !strcmp(r->mem.zram_algo[0], "zstd"), "rpi5: zram");
-        CHECK(contains(json, "\"raspberryPi\":{") && contains(md, "under-voltage or throttling seen (0x50000)"), "rpi5: report");
+        CHECK(contains(json, "\"raspberryPi\":{") && contains(json, "\"throttled\":null,\"underVoltageAlarm\":false}"),
+              "rpi5: report json");
+        CHECK(contains(md, "no under-voltage in the last 2 s (rpi_volt); throttling not reported by this kernel"), "rpi5: report markdown");
     } else if (!strcmp(kind, "vm")) {
         CHECK(!strcmp(r->machine.virt, "kvm") && !strcmp(r->machine.chassis, "vm") && !strcmp(r->machine.firmware, "bios"), "vm: virt %s %s", r->machine.virt, r->machine.chassis);
         CHECK(r->ngpu == 1 && !strcmp(r->gpu[0].device, "Virtio 1.0 GPU") && !r->gpu[0].render_node, "vm: gpu");
@@ -610,6 +621,56 @@ static void test_facts(void) {
     CHECK(sr_tcp_listening("/nonexistent", 5673) == -1, "facts: no /proc/net");
 }
 
+/* The Raspberry Pi firmware's power and throttling (hw/rpifw.c, shared with LordBench) on small trees: what the
+ * kernel shows is reported, what it doesn't is left out, never a false "no throttling". */
+static void pi_case(const char *name, int pi, const char *throttled_path, const char *throttled, const char *alarm,
+                    int want_thr, int want_uv, const char *want_json, const char *not_json, const char *want_md, const char *not_md) {
+    char root[] = "/tmp/sysreport-pi-XXXXXX";
+    if (!mkdtemp(root)) { printf("mkdtemp\n"); exit(2); }
+    mkdirs_in(root, "sys/devices/platform/soc@107c000000/soc@107c000000:firmware");
+    if (throttled) put(root, throttled_path, throttled);
+    if (alarm) { put(root, "sys/class/hwmon/hwmon0/name", "rpi_volt\n"); if (*alarm) put(root, "sys/class/hwmon/hwmon0/in0_lcrit_alarm", alarm); }
+    put(root, "sys/class/hwmon/hwmon1/name", "cpu_thermal\n");
+    if (pi) putn(root, "proc/device-tree/compatible", "raspberrypi,5-model-b\0brcm,bcm2712\0", 36);
+    char *json, *md;
+    SysReport *r = run(root, &json, &md);
+    CHECK(r->pi.is_pi == pi, "pi %s: is_pi %d", name, r->pi.is_pi);
+    CHECK(r->pi.throttled == want_thr && r->pi.uv_alarm == want_uv, "pi %s: throttled %d alarm %d", name, r->pi.throttled, r->pi.uv_alarm);
+    if (want_json) CHECK(contains(json, want_json), "pi %s: json has %s", name, want_json);
+    if (not_json) CHECK(!contains(json, not_json), "pi %s: json lacks %s", name, not_json);
+    if (want_md) CHECK(contains(md, want_md), "pi %s: markdown has \"%s\"", name, want_md);
+    if (not_md) CHECK(!contains(md, not_md), "pi %s: markdown lacks \"%s\"", name, not_md);
+    free(json); free(md); free(r);
+    rmtree(root);
+}
+static void test_pi_firmware(void) {
+    const char *p5 = "sys/devices/platform/soc@107c000000/soc@107c000000:firmware/get_throttled";
+    const char *p4 = "sys/devices/platform/soc/soc:firmware/get_throttled";
+    /* a Pi 5 with the LordOS kernel: rpi_volt only */
+    pi_case("lordos ok", 1, NULL, NULL, "0\n", -1, 0, "\"throttled\":null,\"underVoltageAlarm\":false}", NULL,
+            "no under-voltage in the last 2 s (rpi_volt); throttling not reported by this kernel", "since boot");
+    pi_case("lordos alarm", 1, NULL, NULL, "1\n", -1, 1, "\"throttled\":null,\"underVoltageAlarm\":true}", NULL,
+            "; under-voltage in the last 2 s (rpi_volt)", "slowed");
+    pi_case("lordos bad alarm", 1, NULL, NULL, "yes\n", -1, -1, "\"throttled\":null,\"underVoltageAlarm\":null}", NULL, NULL, "voltage");
+    pi_case("lordos alarm 01", 1, NULL, NULL, "01\n", -1, -1, "\"underVoltageAlarm\":null}", NULL, NULL, "voltage");
+    pi_case("lordos no alarm file", 1, NULL, NULL, "", -1, -1, "\"underVoltageAlarm\":null}", NULL, NULL, "voltage");
+    /* an older kernel with get_throttled and no rpi_volt: the sticky bits are since boot */
+    pi_case("old pi4 sticky", 1, p4, "0x50000\n", NULL, 0x50000, -1, "\"throttled\":327680,\"underVoltageAlarm\":null}", NULL,
+            "; under-voltage since boot; slowed down since boot (get_throttled 0x50000)", NULL);
+    pi_case("old pi5 clear", 1, p5, "0\n", NULL, 0, -1, "\"throttled\":0", NULL,
+            "; no under-voltage since boot; not slowed down since boot (get_throttled 0x0)", NULL);
+    pi_case("old now bits", 1, p5, "5\n", NULL, 5, -1, NULL, NULL, "; under-voltage now; slowed down now (get_throttled 0x5)", "since boot");
+    /* both: rpi_volt clears the sticky bits every 2 s, so they don't cover the time since boot */
+    pi_case("old with rpi_volt", 1, p5, "0x20000\n", "0\n", 0x20000, 0, "\"underVoltageAlarm\":false", NULL,
+            "; no under-voltage in the last 2 s; slowed down in the last 2 s (get_throttled 0x20000)", "since boot");
+    pi_case("old bad value", 1, p5, "0x5 junk\n", NULL, -1, -1, "\"throttled\":null", NULL, NULL, "voltage");
+    pi_case("old second line", 1, p5, "0\n0\n", NULL, -1, -1, "\"throttled\":null", NULL, NULL, "voltage");
+    /* a Pi that shows neither: model and revision only */
+    pi_case("pi nothing", 1, NULL, NULL, NULL, -1, -1, "\"throttled\":null,\"underVoltageAlarm\":null}", NULL, "## Raspberry Pi", "voltage");
+    /* not a Pi (no raspberrypi in the device tree), even with the files: no Pi section */
+    pi_case("not a pi", 0, p4, "0x50005\n", "1\n", -1, -1, NULL, "raspberryPi", NULL, "Raspberry Pi");
+}
+
 static void test_empty(void) {
     char root[] = "/tmp/sysreport-empty-XXXXXX";
     if (!mkdtemp(root)) { printf("mkdtemp\n"); exit(2); }
@@ -653,6 +714,7 @@ int main(int argc, char **argv) {
     setenv("TERM", "xterm-256color", 1);
     setenv("COLORTERM", "truecolor", 1);
     CHECK(fetch_color_mode("auto", 1) == FETCH_TRUECOLOR && fetch_color_mode("auto", 0) == FETCH_PLAIN && fetch_color_mode("never", 1) == FETCH_PLAIN, "color modes");
+    test_pi_firmware();
     test_empty();
     printf("sysreport-test: %d ok, %d failed\n", n_ok, n_bad);
     return n_bad ? 1 : 0;

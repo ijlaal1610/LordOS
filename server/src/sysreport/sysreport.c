@@ -7,6 +7,7 @@
 #include "sysreport.h"
 #include "ids.h"
 #include "../hw/edid.h"
+#include "../hw/rpifw.h"
 
 #include <ctype.h>
 #include <dirent.h>
@@ -691,26 +692,17 @@ static void collect_pi(SysReport *r, const char *root, const char *cpuinfo) {
     }
     r->pi.is_pi = strstr(compat, "raspberrypi") != NULL;
     r->pi.throttled = -1;
+    r->pi.uv_alarm = -1;
     if (!r->pi.is_pi) return;
     snprintf(r->pi.model, sizeof r->pi.model, "%s", r->machine.model);
     field(cpuinfo, "Revision", r->pi.revision, sizeof r->pi.revision);
-    /* the firmware node's get_throttled: soc:firmware on the Pi 4, soc@…:firmware on the Pi 5 */
-    char **e;
-    int n = list_dir(root, "/sys/devices/platform", &e);
-    for (int i = 0; i < n && r->pi.throttled < 0; i++) {
-        char d[256], **f;
-        snprintf(d, sizeof d, "/sys/devices/platform/%s", e[i]);
-        int m = list_dir(root, d, &f);
-        for (int j = 0; j < m && r->pi.throttled < 0; j++) {
-            size_t fl = strlen(f[j]);
-            if (fl < 8 || strcmp(f[j] + fl - 8, "firmware")) continue;
-            char fd[512];
-            snprintf(fd, sizeof fd, "%s/%s", d, f[j]);
-            r->pi.throttled = (int)attr_num(root, fd, "get_throttled", -1);
-        }
-        free_list(f, m);
-    }
-    free_list(e, n);
+    /* what the firmware says about power and throttling (hw/rpifw.c, shared with LordBench): rpi_volt's
+     * under-voltage alarm (the only one the LordOS rpi-6.18.y kernel has) and get_throttled where an older
+     * kernel has it; whatever the kernel doesn't show stays unknown */
+    RpiFw fw;
+    rpifw_read(root, &fw);
+    r->pi.throttled = fw.throttled;
+    r->pi.uv_alarm = fw.uv_alarm;
 }
 
 /* ---- software ---- */
