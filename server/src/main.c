@@ -109,6 +109,7 @@ typedef struct {
     uint32_t *frame;            /* rotated displays and the capture view: scene + fullscreen + cursor */
     Box pend;                   /* logical damage not painted on it yet (its flip was pending) */
     DamageList pl;              /* the same as separate rectangles (paint_damage_rects); pend is their box */
+    int pframes;                /* how many frames' damage pend holds (more than one: a flip was pending) */
     int full;                   /* paint all of it next time */
     int cdirty, cur_on;         /* the cursor moved since it was presented; it was drawn on it */
     /* CPU path: each KMS buffer only gets what changed since it was last drawn into (what was
@@ -1000,9 +1001,10 @@ static Box paint_ui(Server *s) {
         for (int i = 0; i <= OUT_MAX; i++) {
             Out *o = i < OUT_MAX ? &s->out[i] : &s->cap;
             if (i < OUT_MAX && !o->on) continue;
-            if (box_empty(o->pend)) o->pl.n = 0;
+            if (box_empty(o->pend)) { o->pl.n = 0; o->pframes = 0; }
             for (int k = 0; k < nr; k++) dlist_add(&o->pl, rs[k]);
             o->pend = box_join(o->pend, d);
+            o->pframes++;
         }
     }
     ui.layout_ms = t1 - t0;
@@ -1026,11 +1028,23 @@ static Rect paint_out(Server *s, Out *o, int index, int feed) {
     Box lb = o->pl.n ? o->pl.r[0] : (Box){ 0, 0, 0, 0 };
     for (int k = 1; k < o->pl.n; k++) lb = box_join(lb, o->pl.r[k]);
     int multi = !whole && o->pl.n > 1 && !gpu_active() && lb.x0 == b.x0 && lb.y0 == b.y0 && lb.x1 == b.x1 && lb.y1 == b.y1;
-    int nparts = multi ? o->pl.n : 1;
+    DamageList l = { .n = 0 };
+    if (multi) l = o->pl;
+    else if (!whole) dlist_add(&l, b);
+    /* several frames' damage (a pending flip): joined rectangles, or an older frame's after a
+     * blurred node moved, may cut through a blurred node (paint_damage_settle) */
+    if (!whole && o->pframes > 1) paint_damage_settle(&l);
+    if (!whole && l.n) {
+        b = l.r[0];
+        for (int k = 1; k < l.n; k++) b = box_join(b, l.r[k]);
+    }
+    multi = !whole && !gpu_active() && l.n > 1;
+    int nparts = multi ? l.n : 1;
     Box parts[DAMAGE_MAX];
-    if (multi) memcpy(parts, o->pl.r, sizeof(Box) * (size_t)nparts);
+    if (multi) memcpy(parts, l.r, sizeof(Box) * (size_t)nparts);
     else parts[0] = b;
     o->pl.n = 0;
+    o->pframes = 0;
     double t0 = now_ms(), px = 0;
     view_of(o, index);
     for (int k = 0; k < nparts; k++) {

@@ -221,6 +221,44 @@ of the matching [GitHub release](https://github.com/lordbasex/LordOS/releases), 
   older Pi 4 and Pi 5 kernel with `get_throttled` set, clear and "now"; both sources; a malformed value and a second
   line; a Pi with neither; a machine that isn't a Pi with both files; 790 checks) and
   `tests/sysinfo_model_test.mjs` (`piStatus`, 68 checks). `build/lordbench-test` still passes (1,198 checks).
+- **Partial repaints that left stale areas on screen** (the search for the 0.8.2 "grey rectangle", which keeps
+  several damaged rectangles off by default; `docs/MONITOR.md`, "0.8.6: the search for the grey rectangle"). Two new
+  `build/engine-test` suites compare every painted frame with a full repaint that bypasses the raster cache of
+  transformed subtrees (`paint_tf_nocache`, tests only): `test_damage_pipeline` runs the reported scene (Monitor's
+  moving map, a translucent, blurred Terminal minimized into the blurred Dock, the blurred menu bar, menus, the cursor)
+  through a copy of `main.c`'s whole bookkeeping (damage gathered while a page flip is pending, `paint_out`'s parts,
+  `present_cpu`'s per-buffer lists and copy, the cursor) with 0, 30 and 60 % of the flips pending, and checks every
+  presented buffer against the scene; `test_damage_fuzz` does the same with random trees and random changes (clipping,
+  rounded, shadows, translucent, blurred, scaled, rotated, faded, zIndex, hidden, moved, resized, re-parented,
+  destroyed). The double-buffer and cursor bookkeeping was right in every frame. The fuzz found seven bugs in the
+  paint engine, all with one box per frame **and** with several rectangles, each able to leave a wrong area until
+  something repainted it (before the fixes 11 of 12 seeds failed; now 1 of 48 in each mode, a single
+  1-pixel row of 17 pixels, plus a few levels on antialiased edges in a second rare case, both described in the
+  test; the 12 seeds `make test` runs pass):
+  - a node's border is drawn over its children; when a partial repaint started from an opaque child (the opaque-cover
+    shortcut), the parent's border was skipped, so a child overflowing its parent lost the parent's border line where
+    a small rectangle fell (`paint_node`);
+  - a transformed subtree's cached raster stayed valid after a change made while the subtree was hidden or had scale 1,
+    and came back with the old content (each node now has a generation counter, `Node.gen`, bumped by
+    `node_invalidate`, in the subtree's signature, and the node's own style is compared every time);
+  - a transform inside another transform: changes inside the inner subtree never reached the outer raster's
+    signature, so the outer raster stayed cached with old content;
+  - the raster's pixel grid moved with the subtree's extent, so a child moving inside an unclipped scaled subtree
+    resampled every edge of it outside the damage (the grid is now fixed to the node);
+  - when a blur, a terminal or an app window came into or left a transformed subtree, its raster changed resolution or
+    kind and every pixel of it changed, but only the node that came or went was damaged (the whole subtree is now);
+  - a blurred surface repainted with only its own box read, outside the repainted area, the last frame's final
+    pixels, including whatever is painted above it (a sibling's shadow, a menu, a window's border), while a full
+    repaint blurs only what lies below: its edges kept the difference. The margin its blur samples (twice the radius)
+    is now repainted with it (`blur_near`, in `blur_walk` and the several-rectangles rule); in `test_multi_damage`
+    this raises the pixels repainted per frame from 24,078 to 27,363;
+  - a display whose flip was pending gathers several frames' rectangles and `dlist_add` joins the ones that overlap;
+    a join, or an older frame's rectangle after a blurred node moved, could cut through a blurred node, whose blur
+    then depended on where the cut fell. `paint_out` now applies the blur rule again to damage gathered over more than
+    one frame, on the tree as it is painted (`paint_damage_settle`).
+  Which of these was the 0.8.2 report is not proven (the reported scene itself never failed), so several rectangles
+  stay **off by default** (`LORD_DAMAGE=multi`); before turning them on, the 0.8.2 integration test is to be repeated
+  on a VM and the blur margin's cost measured. Built with `make -j8` (no warnings) and `make test` on VM 116.
 - **The desktop under load** (found by LordBench's desktop test; `docs/BENCHMARK.md`, "The desktop under load"): the
   compositor's cgroup (`server`) had the same `cpu.weight` as every app scope, and nice values don't count between
   cgroups, so an app keeping every core busy took half of the compositor's CPU even at nice 19. On a Raspberry Pi 5

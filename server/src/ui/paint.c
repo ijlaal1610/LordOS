@@ -45,6 +45,7 @@ static int paint_cull;                  /* paint_node may skip clipped subtrees 
 static int layer_paint(Canvas *c, Node *n, float opacity);
 static int tf_paint(Canvas *c, Node *n, float opacity);
 static int tf_self, tf_unit;    /* the transformed node being rasterized; the one painted at opacity 1 */
+int paint_tf_nocache;           /* tests: transformed subtrees rasterized again, the cache untouched */
 
 static float max4(const float r[4]) { return fmaxf(fmaxf(r[0], r[1]), fmaxf(r[2], r[3])); }
 
@@ -159,6 +160,12 @@ children:;
         for (int i = 0; i < k; i++) paint_node(c, kids[i], op);
     }
     canvas_set_clip(c, old_clip);
+    /* The border goes over the children. A partial repaint that starts from a node inside this
+     * subtree (the opaque cover, a video) reached it among the children: the border is above it,
+     * so it is painted (before 0.8.6 it was skipped, and a child that overflows its parent lost
+     * the parent's border line where a small damaged rectangle fell; engine-test
+     * test_damage_fuzz). */
+    if (!own && skip_until && skip_reached) own = 1;
 
     if (own && plain && bw > 0 && (s->border_color >> 24))
         PROF(5, canvas_rrect_stroke(c, x, y, w, h, rad, bw * k, with_opacity(s->border_color, op)));
@@ -296,18 +303,30 @@ static int tf_paint(Canvas *c, Node *n, float opacity) {
     if (!n->s.overflow_hidden) b = sub;
     float kr = live ? paint_view.k : paint_view.k * tf_step(sc);
     const int pad = 1;                              /* a transparent edge: antialiased borders */
+    /* The raster's pixel grid is fixed to the node (whole raster pixels from its corner), not to the
+     * bounds: a child that moves changes the bounds, and a grid that moved with them resampled every
+     * edge of the subtree a fraction of a pixel away, outside the damage of the child that moved
+     * (0.8.6, engine-test test_damage_fuzz). */
     int w, h;
+    float gx0, gy0;
     for (;;) {
-        w = (int)ceilf((b.x1 - b.x0) * kr) + 2 * pad;
-        h = (int)ceilf((b.y1 - b.y0) * kr) + 2 * pad;
+        gx0 = floorf((b.x0 - n->ax) * kr);
+        gy0 = floorf((b.y0 - n->ay) * kr);
+        w = (int)(ceilf((b.x1 - n->ax) * kr) - gx0) + 2 * pad;
+        h = (int)(ceilf((b.y1 - n->ay) * kr) - gy0) + 2 * pad;
         if (w <= 0 || h <= 0) return 1;
         if ((size_t)w * h <= TF_MAX_PX || kr < 0.05f) break;
         kr *= 0.7f;
     }
     if ((size_t)w * h > TF_MAX_PX) return 0;
-    TfLayer *e = tf_slot(n->id, kr);
+    /* paint_tf_nocache (tests): a raster of its own per nesting level, the cache untouched */
+    static TfLayer scratch[8];
+    static int depth;
+    if (paint_tf_nocache && depth >= 8) return 0;
+    TfLayer *e = paint_tf_nocache ? &scratch[depth] : tf_slot(n->id, kr);
+    if (paint_tf_nocache) e->valid = 0;
     e->used = ++tf_tick;
-    float ox = b.x0 - n->ax - pad / kr, oy = b.y0 - n->ay - pad / kr;
+    float ox = (gx0 - pad) / kr, oy = (gy0 - pad) / kr;
     if (!e->valid || live || e->w != w || e->h != h || fabsf(e->ox - ox) > 0.01f || fabsf(e->oy - oy) > 0.01f) {
         if ((size_t)w * h > e->cap) {
             uint32_t *px = realloc(e->px, (size_t)w * h * 4);
@@ -324,7 +343,9 @@ static int tf_paint(Canvas *c, Node *n, float opacity) {
         int ks = skip_until, kr_self = tf_self, ku = tf_unit;
         skip_until = 0;
         tf_self = tf_unit = n->id;
+        depth++;
         paint_node(&rc, n, 1);
+        depth--;
         skip_until = ks; tf_self = kr_self; tf_unit = ku;
         paint_view = keep;
         tf_norm(&n->s, &e->st, &e->xst);
@@ -351,8 +372,19 @@ void paint_tf_stats(long *renders, long *composites) {
 }
 
 /* damage_walk: the geometry of a transformed subtree (each node's box relative to its parent) and
- * whether a style or text changed in it; the node's own transform and opacity don't count. */
-typedef struct { uint64_t h; int dirty; } TfSig;
+ * whether a style or text changed in it; the node's own transform and opacity don't count.
+ * A change is seen by the walk only once (paint_dirty is cleared), and the walk only checks a
+ * subtree while it is visible and transformed: a change made while it was hidden, or while its
+ * scale was 1, left a raster cached for that node valid, and it came back with the old content
+ * when the subtree was shown or scaled again (0.8.6, engine-test test_damage_fuzz). So the
+ * signature also holds every descendant's generation (Node.gen, bumped by node_invalidate and
+ * never cleared), and the node's own style is compared every time. */
+typedef struct {
+    uint64_t h;
+    int dirty;
+    int live;                   /* what tf_bounds decides the raster by: 1 live (blur, terminal, app window), 2 not rasterized (video) */
+    Box area;                   /* the subtree on screen (the nodes' visible boxes) */
+} TfSig;
 static TfSig *walk_sig;
 
 static void sig_mix(TfSig *g, const void *p, size_t len) {
@@ -364,6 +396,7 @@ static void sig_node(TfSig *g, const Node *n, int self) {
     float f[6] = { self ? 0 : n->x, self ? 0 : n->y, n->w, n->h, self ? 0 : n->s.translate_x, self ? 0 : n->s.translate_y };
     sig_mix(g, f, sizeof f);
     sig_mix(g, &n->id, sizeof n->id);
+    if (!self) sig_mix(g, &n->gen, sizeof n->gen);   /* its own: compared as a style (tf_check) */
     if (!self && n->own_tf) {
         float t[3] = { n->s.ext->scale_x, n->s.ext->scale_y, n->s.ext->rotate };
         sig_mix(g, t, sizeof t);
@@ -376,7 +409,7 @@ static void tf_check(Node *n, const TfSig *g) {
         TfLayer *e = &tfl[i];
         if (e->node != n->id) continue;
         int changed = g->dirty || e->sig != g->h;
-        if (!changed && n->paint_dirty) {
+        if (!changed) {
             Style st;
             StyleExt xst;
             tf_norm(&n->s, &st, &xst);
@@ -683,8 +716,18 @@ static Box box_and(Box a, Box b) {
     return r.x1 > r.x0 && r.y1 > r.y0 ? r : (Box){0, 0, 0, 0};
 }
 
+static Box box_or(Box a, Box b) {
+    if (a.x1 <= a.x0 || a.y1 <= a.y0) return b;
+    if (b.x1 <= b.x0 || b.y1 <= b.y0) return a;
+    return (Box){ fminf(a.x0, b.x0), fminf(a.y0, b.y0), fmaxf(a.x1, b.x1), fmaxf(a.y1, b.y1) };
+}
+
 static void damage_walk(Node *n, int parent_dirty, int visible, int in_layer, Box clip) {
-    if (n->type == NODE_RAW) { n->paint_dirty = 0; return; }
+    if (n->type == NODE_RAW) {
+        if (walk_sig && visible) sig_mix(walk_sig, &n->gen, sizeof n->gen);   /* the text, for a cached raster */
+        n->paint_dirty = 0;
+        return;
+    }
     int vis = visible && !n->s.display_none;
     int dirty = parent_dirty || n->paint_dirty;
     Box cur = vis ? box_and(screen_box(n), clip) : (Box){0, 0, 0, 0};
@@ -692,9 +735,13 @@ static void damage_walk(Node *n, int parent_dirty, int visible, int in_layer, Bo
     if (walk_sig && vis) {
         sig_node(walk_sig, n, 0);
         if (n->paint_dirty) walk_sig->dirty = 1;
+        /* as tf_bounds */
+        if (n->s.backdrop_blur >= 1 || n->type == NODE_TERM || (n->type == NODE_SURFACE && !gpu_active())) walk_sig->live |= 1;
+        if (n->type == NODE_MEDIA || (n->type == NODE_SURFACE && gpu_active())) walk_sig->live |= 2;
+        walk_sig->area = box_or(walk_sig->area, cur);
     }
     if (vis && n->own_tf) {
-        sig = (TfSig){ 1469598103934665603ull, 0 };
+        sig = (TfSig){ 1469598103934665603ull, 0, 0, cur };
         sig_node(&sig, n, 1);
         walk_sig = &sig;
     }
@@ -722,7 +769,28 @@ static void damage_walk(Node *n, int parent_dirty, int visible, int in_layer, Bo
         inner = box_and(clip, own_box);
     }
     for (Node *c = n->first; c; c = c->next) damage_walk(c, dirty, vis, in_layer, inner);
-    if (walk_sig == &sig) { tf_check(n, &sig); walk_sig = outer_sig; }
+    if (walk_sig == &sig) {
+        tf_check(n, &sig);
+        /* The raster's kind changed (a blur, a terminal or an app window came into the subtree or
+         * left it): it is now drawn at another resolution, or untransformed, so every pixel of the
+         * subtree changes, not only the node that came or went (0.8.6, engine-test
+         * test_damage_fuzz: a blurred node moved into a scaled, unclipped subtree changed the
+         * text next to it, outside the damage). */
+        if (n->tf->live_known && n->tf->live != sig.live) damage_add(sig.area);
+        n->tf->live = (uint8_t)sig.live;
+        n->tf->live_known = 1;
+        walk_sig = outer_sig;
+        /* a transformed subtree inside another one: the outer raster holds the inner one's pixels,
+         * so whatever changes the inner raster changes the outer one (before 0.8.6 only the inner
+         * node's own box reached the outer signature, and the outer raster stayed cached with old
+         * content of the inner subtree; engine-test test_damage_fuzz with nested transforms) */
+        if (walk_sig) {
+            sig_mix(walk_sig, &sig.h, sizeof sig.h);
+            walk_sig->dirty |= sig.dirty;
+            walk_sig->live |= sig.live;
+            walk_sig->area = box_or(walk_sig->area, sig.area);
+        }
+    }
 }
 
 static int box_inside(Box a, Box b) { return a.x0 >= b.x0 && a.y0 >= b.y0 && a.x1 <= b.x1 && a.y1 <= b.y1; }
@@ -733,14 +801,28 @@ static int box_meets(Box a, Box b) { return a.x0 < b.x1 && b.x0 < a.x1 && a.y0 <
  * this node's own tint already on it. Blurring that in made the repainted part lighter: the band
  * left in the menu bar where a menu or the Control Center had just closed (0.8.1, docs/LAYERS.md).
  * So a damage that touches a blurred node, or the margin it samples, repaints the whole node: what
- * it blurs is then this frame's, as in a full repaint. Same on the GPU path (same CPU canvas). */
+ * it blurs is then this frame's, as in a full repaint. Same on the GPU path (same CPU canvas).
+ * (0.8.6) The margin is repainted too: outside the region the canvas holds the last frame's final
+ * pixels, with whatever is painted above the blurred node (a sibling's shadow, a menu) already in
+ * it, while a full repaint blurs only what lies below it. The node's edges took those in, and the
+ * difference stayed until the next full repaint (engine-test test_damage_fuzz). */
+static Box blur_near(const Node *n) {
+    Box b = n->prev_box;
+    float m = ceilf(n->s.backdrop_blur * 2) + 1;
+    Box near = { floorf(b.x0 - m), floorf(b.y0 - m), ceilf(b.x1 + m), ceilf(b.y1 + m) };
+    if (ui.width > 0 && ui.height > 0) {        /* the canvas ends there: so does what it samples */
+        near.x0 = fmaxf(near.x0, 0); near.y0 = fmaxf(near.y0, 0);
+        near.x1 = fminf(near.x1, ui.width); near.y1 = fminf(near.y1, ui.height);
+    }
+    return near;
+}
+
 static void blur_walk(Node *n, int *grew) {
     if (n->type == NODE_RAW || n->s.display_none) return;
     Box b = n->prev_box;
     if (n->s.backdrop_blur >= 1 && b.x1 > b.x0 && b.y1 > b.y0) {
-        float m = ceilf(n->s.backdrop_blur * 2) + 1;
-        Box near = { b.x0 - m, b.y0 - m, b.x1 + m, b.y1 + m };
-        if (box_meets(ui.damage, near) && !box_inside(b, ui.damage)) { damage_add(b); *grew = 1; }
+        Box near = blur_near(n);
+        if (box_meets(ui.damage, near) && !box_inside(near, ui.damage)) { damage_add(near); *grew = 1; }
     }
     for (Node *c = n->first; c; c = c->next) blur_walk(c, grew);
 }
@@ -764,7 +846,16 @@ static void blur_walk(Node *n, int *grew) {
  * and the cause was not found (engine-test test_minimize_damage, a full-repaint comparison of that
  * scene, passes). Correctness first: one box, exactly as in 0.8.1, unless lord-server runs with
  * LORD_DAMAGE=multi (main.c). The clipped-subtree skip (paint_cull) and the copy of only the
- * painted rectangles (present_cpu) follow the same switch. */
+ * painted rectangles (present_cpu) follow the same switch.
+ * (0.8.6) engine-test test_damage_pipeline (that scene through a copy of main.c's whole
+ * bookkeeping: pending flips, both KMS buffers, the cursor) and test_damage_fuzz (random trees)
+ * found and fixed here: a parent's border lost where an opaque child started a partial repaint,
+ * cached rasters kept after changes made while hidden or unscaled or inside a nested transform, a
+ * raster grid that moved with the subtree's extent, a raster changing kind outside the damage,
+ * blurs taking in what is painted above them from outside the repainted area, and several frames'
+ * rectangles cutting through a blurred node (paint_damage_settle). Each one could leave a stale
+ * area until something repainted it, with one box or several; which one the 0.8.2 report was is
+ * not proven, so the switch stays off until it is tried again on the VM. */
 int paint_multi_damage = 0;
 static Box drects[DAMAGE_MAX];
 static int ndrects;
@@ -782,14 +873,63 @@ static Box dl_bbox(const DamageList *l) {
     return b;
 }
 
-static void blur_collect(Node *n, Box *bb, float *bm, int *k) {
+static void blur_collect(Node *n, Box *bb, int *k) {
     if (n->type == NODE_RAW || n->s.display_none) return;
     Box b = n->prev_box;
     if (n->s.backdrop_blur >= 1 && b.x1 > b.x0 && b.y1 > b.y0) {
-        if (*k < BLUR_MAX) { bb[*k] = b; bm[*k] = ceilf(n->s.backdrop_blur * 2) + 1; }   /* as blur_walk */
+        if (*k < BLUR_MAX) bb[*k] = blur_near(n);   /* the node and the margin it samples, as blur_walk */
         (*k)++;
     }
-    for (Node *c = n->first; c; c = c->next) blur_collect(c, bb, bm, k);
+    for (Node *c = n->first; c; c = c->next) blur_collect(c, bb, k);
+}
+
+/* The blur rule on a list of rectangles: every rectangle that touches a blurred node's margin joins
+ * the rectangle holding that node and its whole margin. 1 if it did not settle in 8 passes. */
+static int blur_rule(DamageList *l, const Box *bb, int nb) {
+    int changed = 1;
+    for (int pass = 0; changed && pass < 8; pass++) {
+        changed = 0;
+        for (int k = 0; k < nb; k++) {
+            Box near = bb[k];
+            int hits = 0, inside = 0;
+            Box u = near;
+            for (int i = 0; i < l->n; i++) {
+                if (!box_meets(l->r[i], near)) continue;
+                hits++;
+                if (box_inside(near, l->r[i])) inside = 1;
+                u = (Box){ fminf(u.x0, l->r[i].x0), fminf(u.y0, l->r[i].y0), fmaxf(u.x1, l->r[i].x1), fmaxf(u.y1, l->r[i].y1) };
+            }
+            if (!hits || (hits == 1 && inside)) continue;
+            for (int i = 0; i < l->n; i++) if (box_meets(l->r[i], near)) l->r[i--] = l->r[--l->n];
+            dlist_add(l, (Box){ floorf(u.x0), floorf(u.y0), ceilf(u.x1), ceilf(u.y1) });
+            changed = 1;
+        }
+    }
+    return changed;
+}
+
+/* Damage gathered over several frames (main.c: a display whose page flip was pending keeps adding
+ * each frame's rectangles to its list, and dlist_add joins the ones that overlap): each frame's
+ * rectangles kept the blur rule, but a join of two of them, or a rectangle of an older frame after
+ * a blurred node moved, can cut through a blurred node, whose blur then depends on where the cut
+ * falls (0.8.6, engine-test test_damage_pipeline/test_damage_fuzz). The rule again, on the tree as
+ * it is painted now; if it doesn't settle, one box grown to every margin it touches. */
+void paint_damage_settle(DamageList *l) {
+    if (!ui.root || l->n < 1) return;
+    Box bb[BLUR_MAX];
+    int nb = 0;
+    blur_collect(ui.root, bb, &nb);
+    if (!nb) return;
+    if (nb <= BLUR_MAX && !blur_rule(l, bb, nb)) return;
+    Box all = dl_bbox(l);
+    if (nb > BLUR_MAX) nb = BLUR_MAX;          /* (more than 48 blurred nodes: the first ones) */
+    for (int pass = 0, grew = 1; grew && pass < 8; pass++) {
+        grew = 0;
+        for (int k = 0; k < nb; k++)
+            if (box_meets(all, bb[k]) && !box_inside(bb[k], all)) { all = box_or(all, bb[k]); grew = 1; }
+    }
+    l->n = 0;
+    dlist_add(l, (Box){ floorf(all.x0), floorf(all.y0), ceilf(all.x1), ceilf(all.y1) });
 }
 
 /* The list for this frame, or 0 if it has to be one box. */
@@ -821,29 +961,10 @@ static int multi_rects(Node *root) {
     }
     /* blurred surfaces: see above */
     Box bb[BLUR_MAX];
-    float bm[BLUR_MAX];
     int nb = 0;
-    blur_collect(root, bb, bm, &nb);
+    blur_collect(root, bb, &nb);
     if (nb > BLUR_MAX) return 0;
-    int changed = 1;
-    for (int pass = 0; changed && pass < 8; pass++) {
-        changed = 0;
-        for (int k = 0; k < nb; k++) {
-            Box b = bb[k], near = { b.x0 - bm[k], b.y0 - bm[k], b.x1 + bm[k], b.y1 + bm[k] };
-            int hits = 0, inside = 0;
-            Box u = b;
-            for (int i = 0; i < l.n; i++) {
-                if (!box_meets(l.r[i], near)) continue;
-                hits++;
-                if (box_inside(b, l.r[i])) inside = 1;
-                u = (Box){ fminf(u.x0, l.r[i].x0), fminf(u.y0, l.r[i].y0), fmaxf(u.x1, l.r[i].x1), fmaxf(u.y1, l.r[i].y1) };
-            }
-            if (!hits || (hits == 1 && inside)) continue;
-            for (int i = 0; i < l.n; i++) if (box_meets(l.r[i], near)) l.r[i--] = l.r[--l.n];
-            dlist_add(&l, (Box){ floorf(u.x0), floorf(u.y0), ceilf(u.x1), ceilf(u.y1) });
-            changed = 1;
-        }
-    }
+    int changed = blur_rule(&l, bb, nb);
     if (changed || l.n < 2) return 0;
     Box all = dl_bbox(&l);
     float sum = 0;

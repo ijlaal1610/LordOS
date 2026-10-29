@@ -832,6 +832,29 @@ path described here (with the clipped-subtree skip and the per-rectangle present
 same switch). The measurements below are with it on. The 9×9 dot images and the map frame's opaque
 color (below, "The Monitor's side") stay on.
 
+**0.8.6: the search for the grey rectangle (still off by default).** Two new `build/engine-test`
+suites compare every frame with a full repaint that bypasses the transformed subtrees' raster cache
+(`paint_tf_nocache`): `test_damage_pipeline` runs the reported scene (Monitor's moving map, a
+translucent, blurred Terminal minimized into a blurred Dock with the default theme's frame and
+`fxStyle` transform, a blurred menu bar, menus, title changes, the cursor) through a copy of
+`main.c`'s bookkeeping (each frame's rectangles gathered while a flip is pending, `paint_out`'s
+parts, `present_cpu`'s per-buffer lists and copy, the cursor), with 0, 30 and 60 % of the flips
+pending; it also checks every presented buffer against the scene. `test_damage_fuzz` does the same
+with random trees and random changes. The pipeline's double-buffer and cursor bookkeeping was
+right in every frame. The fuzz found seven engine bugs, all in **both** damage modes (one box or
+several), each able to leave a stale area until something repainted it, and all are fixed
+(CHANGELOG, 0.8.6): a parent's border lost where an opaque child started a partial repaint; cached
+rasters of transformed subtrees kept after a change made while hidden, unscaled or inside a nested
+transform; a raster grid that moved with the subtree's extent; a raster changing kind (a blur
+coming in) outside the damage; blurs taking in what is painted above them from outside the
+repainted area; and several frames' rectangles cutting through a blurred node. Which one the 0.8.2
+report was is not proven (the reported scene itself never failed), so `LORD_DAMAGE=multi` is still
+needed to turn the several-rectangles path on. Before turning it on by default: repeat the 0.8.2
+integration test on a VM with `LORD_DAMAGE=multi` (minimize a Terminal over the animating map at
+least 20 times, screenshots after each), and measure the cost of the blur fix (the margin of a
+blurred surface is now repainted with it: in `test_multi_damage` the pixels repainted per frame
+went from 24,078 to 27,363).
+
 VM 119: 4 vCPU Xeon Silver 4108 at 1.8 GHz, `virtio` GPU without 3D, CPU compositing, 1280×800.
 Network tab in front, ten slow downloads to mirrors in ten countries (arcs to 8–11 countries, about
 20 moving dots). `lord-server` (whole process, % of one core), 5 × 30 s each, the same session

@@ -108,6 +108,16 @@ touches a blurred surface or its margin grows to the whole surface, and every ot
 touching that margin joins it, so a blur never reads a neighbour rectangle half painted
 (`test_multi_damage` in `build/engine-test`, against a full repaint).
 
+Since 0.8.6 the margin is repainted together with the surface (`blur_near` in `paint.c`, used by
+`blur_walk` and by the several-rectangles rule). Outside the repainted area the screen holds the
+last frame's *final* pixels, so whatever is painted above the blurred surface and reaches into its
+margin (a sibling's shadow, a menu, the window's own border over a translucent Terminal) was
+blurred into the surface's edges, while a full repaint blurs only what lies below it; the
+difference stayed until the next full repaint. `test_damage_fuzz` in `build/engine-test` found it
+(random trees through lord-server's whole damage pipeline, every painted frame compared with a full
+repaint). The cost: a repaint that touches the Dock or the menu bar also repaints the band of twice
+the blur radius around it (about 41 px for a 20 px blur; the screen edges cut it).
+
 | | |
 |---|---|
 | ![before](menubar-band-before.png) | ![after](menubar-band-after.png) |

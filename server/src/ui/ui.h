@@ -91,6 +91,7 @@ typedef struct { float x0, y0, x1, y1; } Box;
 typedef struct {
     Affine own, world, inv;
     uint64_t sig;               /* paint.c: geometry of its subtree in the last damage pass (own_tf) */
+    uint8_t live, live_known;   /* paint.c: what decided its raster's kind in the last damage pass */
 } NodeTf;
 
 typedef struct Node {
@@ -109,6 +110,8 @@ typedef struct Node {
     int measure_valid;
     float measure_maxw, measure_w, measure_h;
     uint8_t paint_dirty;        /* its style or text changed */
+    unsigned gen;               /* bumped with paint_dirty and never cleared: a transformed subtree's
+                                 * cached raster compares it (paint.c tf_check) */
     Box prev_box;               /* what it occupied on screen in the last frame */
     NodeTf *tf;
 } Node;
@@ -282,7 +285,12 @@ int   paint_damage(Node *root);     /* computes ui.damage; 0 if there is nothing
 /* after paint_damage: the rectangles to repaint (1 = just ui.damage), each inside ui.damage;
  * see "Several damaged rectangles" in paint.c */
 int   paint_damage_rects(Box *out, int max);
+/* damage gathered over several frames (a display whose flip was pending): the blur rule again,
+ * on the tree as it is now (paint.c, main.c paint_out) */
+void  paint_damage_settle(DamageList *l);
 extern int paint_multi_damage;      /* 1: several rectangles (LORD_DAMAGE=multi, tests); 0 by default */
+extern int paint_tf_nocache;        /* tests: a reference paint that neither reads nor fills the
+                                     * transformed subtrees' raster cache (engine-test) */
 void  paint_root(Canvas *c, Node *root);
 Node *hit_test(Node *root, float x, float y);
 /* Capture mode (media/capture.c): protected nodes are painted black and app windows

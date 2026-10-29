@@ -677,6 +677,560 @@ static void test_minimize_damage(void) {
     paint_multi_damage = 0;
 }
 
+/* ---- lord-server's whole CPU damage pipeline (main.c), modelled ----
+ * The tests above paint each frame's rectangles straight into one canvas. lord-server does more:
+ * paint_ui adds each frame's rectangles to the display's pending list (o->pl, o->pend) and a display
+ * whose page flip is still pending keeps gathering them; paint_out paints the gathered list into
+ * the scene; present_cpu copies into the KMS back buffer what that buffer is missing (what the
+ * other buffer got since, as a box and as rectangles), draws the cursor and flips. This copy of
+ * that bookkeeping (kept in step with main.c: paint_ui, paint_out, present_cpu) checks every
+ * painted scene against a full repaint and every presented buffer against the scene. */
+enum { SW = 1280, SH = 800 };
+typedef struct {
+    Box pend;
+    DamageList pl;
+    int full, pframes;
+    uint32_t *scene;
+    Canvas sc;
+    uint32_t *buf[2];
+    int front, flip_pending;
+    Rect stale[2], curs[2];
+    DamageList pstale[2];
+    Box painted[DAMAGE_MAX];
+    int npainted, full_copy;
+} SimOut;
+
+static Rect sim_rjoin(Rect a, Rect b) {
+    if (a.x1 <= a.x0 || a.y1 <= a.y0) return b;
+    if (b.x1 <= b.x0 || b.y1 <= b.y0) return a;
+    return (Rect){ a.x0 < b.x0 ? a.x0 : b.x0, a.y0 < b.y0 ? a.y0 : b.y0, a.x1 > b.x1 ? a.x1 : b.x1, a.y1 > b.y1 ? a.y1 : b.y1 };
+}
+static Box sim_bjoin(Box a, Box b) {
+    if (a.x1 <= a.x0 || a.y1 <= a.y0) return b;
+    if (b.x1 <= b.x0 || b.y1 <= b.y0) return a;
+    return (Box){ fminf(a.x0, b.x0), fminf(a.y0, b.y0), fmaxf(a.x1, b.x1), fmaxf(a.y1, b.y1) };
+}
+static int sim_bempty(Box b) { return b.x1 <= b.x0 || b.y1 <= b.y0; }
+
+static void sim_init(SimOut *o) {
+    memset(o, 0, sizeof *o);
+    o->scene = calloc((size_t)SW * SH, 4);
+    o->buf[0] = calloc((size_t)SW * SH, 4);
+    o->buf[1] = calloc((size_t)SW * SH, 4);
+    canvas_init(&o->sc, o->scene, SW, SH, SW);
+    o->full = 1;
+    o->full_copy = 2;
+}
+static void sim_free(SimOut *o) { free(o->scene); free(o->buf[0]); free(o->buf[1]); }
+
+/* main.c paint_ui: layout, damage, and the damage goes to the display's pending list */
+static void sim_paint_ui(SimOut *o, Node *root) {
+    layout_root(root, SW, SH);
+    Box d = { 0, 0, 0, 0 };
+    if (paint_damage(root)) d = ui.damage;
+    ui.damage = (Box){ 0, 0, 0, 0 };
+    if (sim_bempty(d)) return;
+    Box rs[DAMAGE_MAX];
+    int nr = paint_damage_rects(rs, DAMAGE_MAX);
+    if (sim_bempty(o->pend)) { o->pl.n = 0; o->pframes = 0; }
+    for (int k = 0; k < nr; k++) dlist_add(&o->pl, rs[k]);
+    o->pend = sim_bjoin(o->pend, d);
+    o->pframes++;
+}
+
+/* main.c paint_out at scale 1 */
+static Rect sim_paint_out(SimOut *o, Node *root, int *nparts_out) {
+    Rect r = { 0, 0, 0, 0 };
+    Box b = o->pend;
+    o->npainted = 0;
+    *nparts_out = 0;
+    if (o->full) b = (Box){ 0, 0, SW, SH };
+    int whole = o->full;
+    o->full = 0;
+    o->pend = (Box){ 0, 0, 0, 0 };
+    if (sim_bempty(b)) return r;
+    Box lb = o->pl.n ? o->pl.r[0] : (Box){ 0, 0, 0, 0 };
+    for (int k = 1; k < o->pl.n; k++) lb = sim_bjoin(lb, o->pl.r[k]);
+    int multi = !whole && o->pl.n > 1 && lb.x0 == b.x0 && lb.y0 == b.y0 && lb.x1 == b.x1 && lb.y1 == b.y1;
+    DamageList l = { .n = 0 };
+    if (multi) l = o->pl;
+    else if (!whole) dlist_add(&l, b);
+    if (!whole && o->pframes > 1 && !getenv("SIM_NO_SETTLE")) paint_damage_settle(&l);
+    if (!whole && l.n) {
+        b = l.r[0];
+        for (int k = 1; k < l.n; k++) b = sim_bjoin(b, l.r[k]);
+    }
+    multi = !whole && l.n > 1;
+    int nparts = multi ? l.n : 1;
+    Box parts[DAMAGE_MAX];
+    if (multi) memcpy(parts, l.r, sizeof(Box) * (size_t)nparts);
+    else parts[0] = b;
+    o->pl.n = 0;
+    o->pframes = 0;
+    for (int k = 0; k < nparts; k++) {
+        Box q = parts[k];
+        Rect pr = { (int)floorf(fmaxf(q.x0, 0)), (int)floorf(fmaxf(q.y0, 0)), (int)ceilf(fminf(q.x1, SW)), (int)ceilf(fminf(q.y1, SH)) };
+        if (whole) pr = (Rect){ 0, 0, SW, SH };
+        if (pr.x1 <= pr.x0 || pr.y1 <= pr.y0) continue;
+        ui.damage = (Box){ (float)pr.x0, (float)pr.y0, (float)pr.x1, (float)pr.y1 };
+        canvas_set_clip(&o->sc, pr);
+        canvas_clear(&o->sc, 0x000000);
+        paint_root(&o->sc, root);
+        r = sim_rjoin(r, pr);
+        o->painted[o->npainted++] = (Box){ (float)pr.x0, (float)pr.y0, (float)pr.x1, (float)pr.y1 };
+    }
+    *nparts_out = nparts;
+    canvas_set_clip(&o->sc, (Rect){ 0, 0, SW, SH });
+    ui.damage = (Box){ 0, 0, 0, 0 };
+    return r;
+}
+
+/* main.c present_cpu (no rotation, no Night Light): returns the back buffer it drew */
+static int sim_present(SimOut *o, Rect r, Rect cur) {
+    int bi = o->front ^ 1;
+    uint32_t *out = o->buf[bi];
+    if (o->full_copy > 0) {
+        memcpy(out, o->scene, (size_t)SW * SH * 4);
+        o->full_copy--;
+    } else {
+        Rect need = sim_rjoin(sim_rjoin(o->stale[bi], r), o->curs[bi]);
+        if (need.x0 < 0) need.x0 = 0;
+        if (need.y0 < 0) need.y0 = 0;
+        if (need.x1 > SW) need.x1 = SW;
+        if (need.y1 > SH) need.y1 = SH;
+        DamageList cp = o->pstale[bi];
+        for (int i = 0; i < o->npainted; i++) dlist_add(&cp, o->painted[i]);
+        Rect cu = o->curs[bi];
+        if (cu.x1 > cu.x0 && cu.y1 > cu.y0) dlist_add(&cp, (Box){ (float)cu.x0, (float)cu.y0, (float)cu.x1, (float)cu.y1 });
+        Box cb = cp.n ? cp.r[0] : (Box){ 0, 0, 0, 0 };
+        for (int i = 1; i < cp.n; i++) cb = sim_bjoin(cb, cp.r[i]);
+        Rect cbr = { (int)cb.x0, (int)cb.y0, (int)cb.x1, (int)cb.y1 };
+        Rect nj = sim_rjoin(sim_rjoin(o->stale[bi], r), o->curs[bi]);
+        if (paint_multi_damage && cp.n > 1 && cbr.x0 == nj.x0 && cbr.y0 == nj.y0 && cbr.x1 == nj.x1 && cbr.y1 == nj.y1) {
+            for (int i = 0; i < cp.n; i++) {
+                Rect q = { (int)cp.r[i].x0, (int)cp.r[i].y0, (int)cp.r[i].x1, (int)cp.r[i].y1 };
+                if (q.x0 < 0) q.x0 = 0;
+                if (q.y0 < 0) q.y0 = 0;
+                if (q.x1 > SW) q.x1 = SW;
+                if (q.y1 > SH) q.y1 = SH;
+                for (int y = q.y0; y < q.y1; y++) memcpy(out + (size_t)y * SW + q.x0, o->scene + (size_t)y * SW + q.x0, (size_t)(q.x1 - q.x0) * 4);
+            }
+        } else
+            for (int y = need.y0; y < need.y1; y++) memcpy(out + (size_t)y * SW + need.x0, o->scene + (size_t)y * SW + need.x0, (size_t)(need.x1 - need.x0) * 4);
+    }
+    o->stale[bi] = (Rect){ 0, 0, 0, 0 };
+    o->stale[bi ^ 1] = sim_rjoin(o->stale[bi ^ 1], r);
+    o->pstale[bi].n = 0;
+    for (int i = 0; i < o->npainted; i++) dlist_add(&o->pstale[bi ^ 1], o->painted[i]);
+    o->curs[bi] = (Rect){ 0, 0, 0, 0 };
+    if (cur.x1 > cur.x0) {                      /* the arrow: an opaque square */
+        for (int y = cur.y0; y < cur.y1; y++) for (int x = cur.x0; x < cur.x1; x++) out[(size_t)y * SW + x] = 0xffff00ff;
+        o->curs[bi] = cur;
+    }
+    return bi;
+}
+
+static uint32_t *sim_ref;
+static int sim_bad_px;                  /* pixels off by more than 24 levels in the last comparison */
+/* a full repaint of the tree as it is now; worst channel difference from px, and where */
+static int sim_full_differs(Node *root, const uint32_t *px, int *where) {
+    if (!sim_ref) sim_ref = calloc((size_t)SW * SH, 4);
+    if (!sim_ref) return 999;
+    Canvas rc;
+    canvas_init(&rc, sim_ref, SW, SH, SW);
+    ui.damage = (Box){ 0, 0, SW, SH };
+    canvas_clear(&rc, 0);
+    paint_tf_nocache = 1;               /* the truth: no raster from the cache, and the cache untouched */
+    paint_root(&rc, root);
+    paint_tf_nocache = 0;
+    ui.damage = (Box){ 0, 0, 0, 0 };
+    int worst = 0;
+    sim_bad_px = 0;
+    for (int i = 0; i < SW * SH; i++) {
+        uint32_t a = sim_ref[i], b = px[i];
+        if (a == b) continue;
+        int big = 0;
+        for (int sh = 0; sh < 24; sh += 8) {
+            int dv = abs((int)((a >> sh) & 255) - (int)((b >> sh) & 255));
+            if (dv > worst) { worst = dv; *where = i; }
+            if (dv > 24) big = 1;
+        }
+        sim_bad_px += big;
+    }
+    return worst;
+}
+
+/* The desktop of the 0.8.2 report: Monitor's moving map, a translucent, blurred Terminal in front of
+ * it, minimized into a blurred Dock (the default theme: WindowShell's frame, fxStyle's transform),
+ * under a blurred menu bar. */
+typedef struct { Node *shell, *inner, *title; } SimWin;
+static SimWin sim_window(Node *parent, float x, float y, float w, float h, int terminal, int with_title) {
+    SimWin sw;
+    const float m = 6;                           /* WINDOW_EDGE: the invisible resize borders */
+    sw.shell = box_in(parent, x - m, y - m, w + 2 * m, h + 2 * m, 0);
+    sw.inner = box_in(sw.shell, m, m, w, h, terminal ? 0 : 0xff1e1e20);
+    ss(sw.inner, "overflow", "hidden");
+    sn(sw.inner, "borderRadius", 12);
+    sn(sw.inner, "borderWidth", 1);
+    sn(sw.inner, "borderColor", terminal ? 0xff3a3a3d : 0x33ffffff);
+    sn(sw.inner, "shadowColor", 0x8c000000);
+    sn(sw.inner, "shadowBlur", 56);
+    sn(sw.inner, "shadowOffsetY", 24);
+    Node *bar = box_in(sw.inner, 0, 0, w, 40, 0xff2c2c2f);
+    sw.title = with_title ? text(bar, terminal ? "lord@lordos: ~" : "Monitor", 13) : NULL;
+    if (sw.title) { sn(sw.title, "color", 0xffe0e0e0); ss(sw.title, "position", "absolute"); sn(sw.title, "left", w / 2 - 50); sn(sw.title, "top", 12); }
+    static const uint32_t lights[3] = { 0xffff5f57, 0xfffebc2e, 0xff28c840 };
+    for (int i = 0; i < 3; i++) { Node *l = box_in(bar, 14 + i * 21, 13, 13, 13, lights[i]); sn(l, "borderRadius", 7); }
+    box_in(sw.inner, 0, 40, w, 1, terminal ? 0xff3a3a3d : 0x22ffffff);
+    if (terminal) {
+        Node *pane = box_in(sw.inner, 0, 41, w, h - 41, 0xc81e1e1e);   /* translucent profile, with blur */
+        ss(pane, "overflow", "hidden");
+        sn(pane, "backdropBlur", 14);
+        for (int i = 0; i < 4; i++) { Node *t = text(pane, "lord@lordos:~$ ls -la /usr/share", 13); sn(t, "color", 0xffd0d0d0); ss(t, "position", "absolute"); sn(t, "left", 8); sn(t, "top", 6 + i * 18); }
+    }
+    return sw;
+}
+
+typedef struct { int pend_pct, seed, frames; } SimPlan;
+
+/* Returns the number of frames that differed. */
+static int sim_run(const SimPlan *pl, int *painted_frames, int *multi_frames) {
+    enum { DOTS = 30 };
+    rng_state = (uint32_t)pl->seed * 2654435761u + 7;
+    ui_reset();
+    Node *root = view(NULL);
+    ui.root = root;
+    sn(root, "backgroundColor", 0xff35507a);
+    box_in(root, 0, 0, SW, SH, 0xff35507a);       /* the wallpaper image */
+    for (int i = 0; i < 12; i++) box_in(root, (float)(i * 110), 0, 40, SH, 0xff2a4466);
+    SimWin mon = sim_window(root, 70, 60, 960, 620, 0, 1);
+    Node *map = box_in(mon.inner, 16, 56, 928, 548, 0xff26282c);
+    ss(map, "overflow", "hidden");
+    sn(map, "borderRadius", 8);
+    for (int i = 0; i < 9; i++) box_in(map, (float)(40 + (i % 5) * 170), (float)(60 + (i / 5) * 220), 120, 140, 0xff3b4f3b);
+    Node *dots[DOTS];
+    float dx[DOTS], dy[DOTS];
+    for (int i = 0; i < DOTS; i++) {
+        dx[i] = (float)(rnd() % 900);
+        dy[i] = (float)(rnd() % 520);
+        dots[i] = box_in(map, dx[i], dy[i], 9, 9, i % 2 ? 0xd8ff9f0a : 0xd830d158);
+        sn(dots[i], "borderRadius", 4.5);
+    }
+    Node *pill = box_in(map, 300, 200, 90, 18, 0xe01c1d21);
+    sn(pill, "borderRadius", 9);
+    float tx = 260 + (float)(rnd() % 300), ty = 140 + (float)(rnd() % 200), tw = 640, th = 400;
+    SimWin term = sim_window(root, tx, ty, tw, th, 1, 1);
+    Node *bar = box_in(layer_node(root, 20, SW, SH), 0, 0, SW, 28, 0x80202024);
+    sn(bar, "backdropBlur", 20);
+    text(bar, "Terminal   File   Edit   View", 13);
+    Node *dockl = layer_node(root, 10, SW, SH);
+    Node *dock = box_in(dockl, SW / 2 - 300, SH - 70, 600, 62, 0x90303034);
+    sn(dock, "backdropBlur", 20);
+    sn(dock, "borderRadius", 16);
+    for (int i = 0; i < 10; i++) { Node *ic = box_in(dock, 8 + i * 58, 7, 48, 48, 0xff5080c0 + (uint32_t)i * 0x101010); sn(ic, "borderRadius", 11); }
+    Node *popl = layer_node(root, 50, SW, SH), *menu = NULL;
+    SimOut o;
+    sim_init(&o);
+    int bad = 0, cx = 600, cy = 400;
+    int state = 0, t0 = 0, steps = 0;           /* 0 shown, 1 gone one frame, 2 shrinking, 3 minimized */
+    *painted_frames = *multi_frames = 0;
+    for (int f = 0; f < pl->frames; f++) {
+        /* the moving dots (12 fps in Monitor, here every frame) */
+        for (int i = 0; i < DOTS; i++) {
+            if (rnd() % 4 == 0) continue;
+            dx[i] += (float)((int)(rnd() % 9) - 4);
+            dy[i] += (float)((int)(rnd() % 7) - 3);
+            if (dx[i] < -9 || dx[i] > 930) dx[i] = (float)(rnd() % 900);
+            if (dy[i] < -9 || dy[i] > 550) dy[i] = (float)(rnd() % 520);
+            sn(dots[i], "left", dx[i]);
+            sn(dots[i], "top", dy[i]);
+        }
+        if (rnd() % 6 == 0) { sn(pill, "left", (float)(rnd() % 800)); sn(pill, "top", (float)(rnd() % 500)); }
+        /* the Terminal: minimize (wm.minimize, then useMinimizing's remount with fxStyle), restore */
+        if (state == 0 && rnd() % 25 == 0) {
+            node_destroy(term.shell);
+            state = 1;
+        } else if (state == 1) {
+            term = sim_window(root, tx, ty, tw, th, 1, 1);
+            state = 2;
+            t0 = f;
+            steps = 6 + (int)(rnd() % 14);
+        }
+        if (state == 2) {
+            float p = fminf(1, (float)(f - t0 + 1) / (float)steps), e = p * p;
+            float fx = SW / 2.0f, fy = SH - 36.0f;
+            sn(term.inner, "translateX", (fx - (tx + tw / 2)) * e);
+            sn(term.inner, "translateY", (fy - (ty + th / 2)) * e);
+            sn(term.inner, "scaleX", 1 - 0.9f * e);
+            sn(term.inner, "scaleY", 1 - 0.9f * e);
+            sn(term.inner, "opacity", 1 - 0.7f * e);
+            if (f - t0 >= steps) { node_destroy(term.shell); state = 3; t0 = f; }
+        } else if (state == 3 && f - t0 > 8 && rnd() % 10 == 0) {
+            tx = 200 + (float)(rnd() % 400);
+            ty = 100 + (float)(rnd() % 250);
+            term = sim_window(root, tx, ty, tw, th, 1, 1);
+            state = 0;
+        }
+        if (state == 0 && term.title && rnd() % 9 == 0) node_set_text(term.title->first, rnd() % 2 ? "lord@lordos: ~/src" : "lord@lordos: ~");
+        if (rnd() % 20 == 0) {                   /* a menu opens or closes */
+            if (menu) { node_destroy(menu); menu = NULL; }
+            else { menu = box_in(popl, (float)(rnd() % 1000), 24, 220, 260, 0xf0303034); sn(menu, "borderRadius", 8); sn(menu, "shadowColor", 0x60000000); sn(menu, "shadowBlur", 20); }
+        }
+        if (rnd() % 3 == 0) { cx = (int)(rnd() % (SW - 16)); cy = (int)(rnd() % (SH - 16)); }
+        /* the frame: damage always; painted and presented only when the flip is not pending */
+        sim_paint_ui(&o, root);
+        if (o.flip_pending) {
+            if ((int)(rnd() % 100) < 50) { o.flip_pending = 0; o.front ^= 1; }
+            else continue;
+        }
+        int nparts = 0;
+        Rect r = sim_paint_out(&o, root, &nparts);
+        if (r.x1 > r.x0) { (*painted_frames)++; if (nparts > 1) (*multi_frames)++; }
+        int where = 0, worst = sim_full_differs(root, o.scene, &where);
+        if (worst > 2) {
+            if (bad < 4) printf("  pipeline seed %d frame %d (state %d, %d parts): scene differs from a full repaint by %d at %d,%d\n",
+                                pl->seed, f, state, nparts, worst, where % SW, where / SW);
+            bad++;
+        }
+        Rect cur = { cx, cy, cx + 12, cy + 18 };
+        int bi = sim_present(&o, r, cur);
+        int off = 0, at = -1;
+        for (int y = 0; y < SH && at < 0; y++)
+            for (int x = 0; x < SW; x++) {
+                int in = x >= cur.x0 && x < cur.x1 && y >= cur.y0 && y < cur.y1;
+                uint32_t want = in ? 0xffff00ff : o.scene[(size_t)y * SW + x];
+                if (o.buf[bi][(size_t)y * SW + x] != want) { off++; at = y * SW + x; break; }
+            }
+        if (off) {
+            if (bad < 4) printf("  pipeline seed %d frame %d: the presented buffer %d differs from the scene at %d,%d\n", pl->seed, f, bi, at % SW, at / SW);
+            bad++;
+        }
+        if ((int)(rnd() % 100) < pl->pend_pct) o.flip_pending = 1;
+        else o.front = bi;
+    }
+    sim_free(&o);
+    return bad;
+}
+
+static void test_damage_pipeline(void) {
+    int total_bad = 0, painted = 0, multi = 0;
+    for (int mode = 1; mode >= 0; mode--)
+        for (int seed = 0; seed < 6; seed++) {
+            paint_multi_damage = mode;
+            SimPlan pl = { (int[]){ 0, 30, 60 }[seed % 3], seed + 100 * mode, 120 };
+            int p = 0, m = 0, bad = sim_run(&pl, &p, &m);
+            CHECK(!bad, "pipeline (multi %d, seed %d, %d%% of flips pending): %d frames differ", mode, seed, pl.pend_pct, bad);
+            total_bad += bad;
+            if (mode) { painted += p; multi += m; }
+        }
+    printf("pipeline: %d frames painted with several rectangles on, %d of them in several parts\n", painted, multi);
+    paint_multi_damage = 0;
+    (void)total_bad;
+}
+
+/* Random trees and random changes through the same pipeline (0.8.6): boxes that clip or not,
+ * rounded, with shadows, translucent, blurred, scaled or rotated, faded, raised with zIndex, hidden,
+ * moved, resized, re-parented, destroyed; small changes far apart, so most frames are several
+ * rectangles, and 40 % of the flips pending in half the seeds. Every painted frame is compared with
+ * a full repaint that doesn't use the transformed subtrees' raster cache (paint_tf_nocache), and
+ * every presented buffer with the scene. It found, in both damage modes: a parent's border lost
+ * where its opaque child was the start of a partial repaint; cached rasters kept after a change
+ * made while hidden or unscaled; a raster grid that moved with the subtree's extent; blurs that
+ * took in what is painted above them from outside the repainted area; a raster that changed kind
+ * (a blur coming in) outside the damage; several frames' rectangles that cut through a blurred
+ * node; a transform inside another one whose changes never reached the outer raster's cache.
+ * What is left (FZ_STRICT=1, 24 seeds: one seed in each mode, the same with one box or several):
+ * a 1-pixel row of a rotated subtree moved into another transformed subtree (up to 63 levels,
+ * 17 px), and the antialiased edge of a blurred node inside a scaled subtree without
+ * overflow: hidden, which moves by up to ~13 levels when the subtree's extent changes; both stay
+ * until something repaints them. The 12 seeds run by default hit neither (a frame fails here with
+ * a pixel off by more than 24 levels).
+ * Environment: FUZZ_SEEDS, FZ_ONLY=seed, FZ_MULTI=0|1, FZ_NO, FZ_INIT=nodes, FZ_STRICT, FZ_AREA,
+ * FZ_LOG (the changes), FZ_DEBUG (fz_explain). */
+#define FZ_MAX 160
+static Node *fz_nodes[FZ_MAX];
+static int fz_n;
+
+static float frand(float a, float b) { return a + (b - a) * (float)(rnd() % 10001) / 10000.0f; }
+/* FZ_NO=blur,shadow,scale,rotate,nest leaves those out (nest: a transform inside another one) */
+static int fz_no(const char *what) { const char *e = getenv("FZ_NO"); return e && strstr(e, what) != NULL; }
+
+static int fz_has_tf(const Node *n) { return n->s.ext && (n->s.ext->scale_x != 1 || n->s.ext->scale_y != 1 || n->s.ext->rotate != 0); }
+static int fz_sub_tf(const Node *n) { if (fz_has_tf(n)) return 1; for (const Node *c = n->first; c; c = c->next) if (fz_sub_tf(c)) return 1; return 0; }
+/* FZ_NO=nest: a transform only where no ancestor or descendant has one */
+static int fz_nest_ok(const Node *n) {
+    if (!fz_no("nest")) return 1;
+    for (const Node *p = n->parent; p; p = p->parent) if (fz_has_tf(p)) return 0;
+    for (const Node *c = n->first; c; c = c->next) if (fz_sub_tf(c)) return 0;
+    return 1;
+}
+
+static void fz_style(Node *b) {
+    int r = (int)(rnd() % 100);
+    if (r < 35) ss(b, "overflow", "hidden");
+    if (rnd() % 3 == 0) sn(b, "borderRadius", frand(0, 20));
+    if (rnd() % 5 == 0 && !fz_no("shadow")) { sn(b, "shadowColor", 0x70000000); sn(b, "shadowBlur", frand(2, 40)); sn(b, "shadowOffsetY", frand(-6, 16)); }
+    if (rnd() % 7 == 0 && !fz_no("blur")) sn(b, "backdropBlur", frand(2, 24));
+    if (rnd() % 6 == 0) sn(b, "opacity", frand(0.2f, 1));
+    if (rnd() % 6 == 0 && !fz_no("scale") && fz_nest_ok(b)) { float s = frand(0.1f, 1.3f); sn(b, "scaleX", s); sn(b, "scaleY", s); }
+    if (rnd() % 14 == 0 && !fz_no("rotate") && fz_nest_ok(b)) sn(b, "rotate", frand(-30, 30));
+    if (rnd() % 8 == 0) sn(b, "zIndex", (float)(rnd() % 5));
+    if (rnd() % 6 == 0) { sn(b, "borderWidth", 1); sn(b, "borderColor", 0x40ffffff); }
+}
+
+static void fz_forget(Node *n) {
+    for (int i = 0; i < fz_n; i++) if (fz_nodes[i] == n) { fz_nodes[i] = fz_nodes[--fz_n]; i--; }
+    for (Node *c = n->first; c; c = c->next) fz_forget(c);
+}
+
+static Node *fz_add(Node *root) {
+    if (fz_n >= FZ_MAX) return NULL;
+    Node *p = fz_n && rnd() % 3 ? fz_nodes[rnd() % (unsigned)fz_n] : root;
+    if (p->type == NODE_TEXT) p = root;
+    uint32_t a = rnd() % 3 == 0 ? 0xff000000u : (uint32_t)(0x60 + rnd() % 0x9f) << 24;
+    Node *b = box_in(p, frand(-20, p == root ? SW - 40 : p->w), frand(-20, p == root ? SH - 40 : p->h), frand(4, 300), frand(4, 220),
+                     a | (rnd() & 0xffffff));
+    fz_style(b);
+    if (rnd() % 6 == 0) { Node *t = text(b, rnd() % 2 ? "Quarterly report" : "\xd8\xaa\xd9\x82\xd8\xb1\xd9\x8a\xd8\xb1 abc", 13); sn(t, "color", 0xffffffff); }
+    else fz_nodes[fz_n++] = b;
+    return b;
+}
+
+static void fz_step(Node *root) {
+    int ops = 1 + (int)(rnd() % 4);
+    for (int k = 0; k < ops; k++) {
+        int op = (int)(rnd() % 100);
+        if (!fz_n || op < 12) { fz_add(root); continue; }
+        Node *n = fz_nodes[rnd() % (unsigned)fz_n];
+        if (getenv("FZ_LOG")) printf("      op %d on node %d (parent %d)\n", op, n->id, n->parent ? n->parent->id : 0);
+        if (op < 22) { fz_forget(n); node_destroy(n); }
+        else if (op < 50) { sn(n, "left", n->x + frand(-12, 12)); sn(n, "top", n->y + frand(-12, 12)); }
+        else if (op < 58) { sn(n, "width", frand(4, 300)); sn(n, "height", frand(4, 220)); }
+        else if (op < 66) { float s = frand(0.1f, 1.3f); if (!fz_no("scale") && fz_nest_ok(n)) { sn(n, "scaleX", s); sn(n, "scaleY", s); } sn(n, "translateX", frand(-40, 40)); }
+        else if (op < 72) sn(n, "opacity", frand(0, 1));
+        else if (op < 78) ss(n, "display", n->s.display_none ? "flex" : "none");
+        else if (op < 84) sn(n, "backgroundColor", (uint32_t)(0x60 + rnd() % 0xa0) << 24 | (rnd() & 0xffffff));
+        else if (op < 88) sn(n, "zIndex", (float)(rnd() % 5));
+        else if (op < 92 && fz_n > 1) {           /* re-parented (React moving a node) */
+            Node *p = fz_nodes[rnd() % (unsigned)fz_n];
+            int cycle = 0;
+            for (Node *q = p; q; q = q->parent) if (q == n) cycle = 1;
+            if (fz_no("nest") && fz_sub_tf(n)) for (Node *q = p; q; q = q->parent) if (fz_has_tf(q)) cycle = 1;
+            if (!cycle && p->type != NODE_TEXT) node_append(p, n);
+        } else if (op < 96) { float v = frand(0, 40); if (!fz_no("shadow")) sn(n, "shadowBlur", v); }
+        else { float v = rnd() % 2 ? 0 : frand(2, 20); if (!fz_no("blur")) sn(n, "backdropBlur", v); }
+    }
+}
+
+/* FZ_DEBUG: what the first differing pixel of a seed is made of (the damage, the nodes over it,
+ * which ones the reference depends on, and the partial paint replayed three ways). */
+static void fz_explain(Node *root, SimOut *op, const uint32_t *before, DamageList keep, Box keepb, int where) {
+    SimOut o = *op;
+    int px = where % SW, py = where / SW;
+    printf("    pend %.0f,%.0f %.0f,%.0f; parts:", keepb.x0, keepb.y0, keepb.x1, keepb.y1);
+    for (int i = 0; i < keep.n; i++) printf(" [%.0f,%.0f %.0f,%.0f]", keep.r[i].x0, keep.r[i].y0, keep.r[i].x1, keep.r[i].y1);
+    printf("\n    scene %08x ref %08x\n", o.scene[where], sim_ref[where]);
+    uint32_t want = sim_ref[where];
+    { int outside = 0, first = -1; for (int i = 0; i < SW * SH; i++) { int x = i % SW, y = i / SW, in = 0; for (int k = 0; k < o.npainted; k++) if (x >= o.painted[k].x0 && x < o.painted[k].x1 && y >= o.painted[k].y0 && y < o.painted[k].y1) in = 1; if (!in && before[i] != sim_ref[i]) { outside++; if (first < 0) first = i; } }
+      printf("    outside the parts, the scene before this frame differs from the reference in %d px (first %d,%d)\n", outside, first % SW, first / SW); }
+    { static uint32_t *t; if (!t) t = malloc((size_t)SW * SH * 4); Canvas tc; canvas_init(&tc, t, SW, SH, SW); Rect pr = { (int)o.painted[0].x0, (int)o.painted[0].y0, (int)o.painted[0].x1, (int)o.painted[0].y1 };
+      memcpy(t, before, (size_t)SW * SH * 4); ui.damage = o.painted[0]; canvas_set_clip(&tc, pr); canvas_clear(&tc, 0); paint_tf_nocache = 1; paint_root(&tc, root); printf("    replay part (damage part, clip part): %08x\n", t[where]);
+      memcpy(t, before, (size_t)SW * SH * 4); ui.damage = (Box){ 0, 0, SW, SH }; canvas_set_clip(&tc, pr); canvas_clear(&tc, 0); paint_root(&tc, root); printf("    replay part (damage full, clip part): %08x\n", t[where]);
+      memcpy(t, before, (size_t)SW * SH * 4); ui.damage = o.painted[0]; canvas_set_clip(&tc, (Rect){0,0,SW,SH}); canvas_clear(&tc, 0); paint_root(&tc, root); printf("    replay (damage part, clip full): %08x\n", t[where]);
+      paint_tf_nocache = 0; ui.damage = (Box){0,0,0,0}; }
+    { int keepm = paint_multi_damage, w3 = 0; paint_multi_damage = 0; sim_full_differs(root, o.scene, &w3); printf("    reference without cull: %08x\n", sim_ref[where]); paint_multi_damage = keepm; sim_full_differs(root, o.scene, &w3); }
+    for (int dy2 = -3; dy2 <= 3; dy2++) { printf("    row %d:", dy2); for (int dx2 = -3; dx2 <= 3; dx2++) printf(" %06x/%06x", sim_ref[where + dy2 * SW + dx2] & 0xffffff, o.scene[where + dy2 * SW + dx2] & 0xffffff); printf("\n"); }
+    for (int i = 2; i < ui.cap; i++) {
+        Node *n = ui.nodes[i];
+        if (!n || n->type == NODE_RAW || n->s.display_none) continue;
+        n->s.display_none = 1;
+        int w2 = 0;
+        sim_full_differs(root, o.scene, &w2);
+        if (sim_ref[where] != want) printf("    hiding node %d changes the reference pixel to %08x\n", i, sim_ref[where]);
+        n->s.display_none = 0;
+    }
+    sim_full_differs(root, o.scene, &where);
+    for (int i = 0; i < ui.cap; i++) {
+        Node *n = ui.nodes[i];
+        if (!n || n->type == NODE_RAW) continue;
+        Box b = n->prev_box;
+        int inl = px >= n->ax && px < n->ax + n->w && py >= n->ay && py < n->ay + n->h;
+        if ((px < b.x0 || px >= b.x1 || py < b.y0 || py >= b.y1) && !inl) continue;
+        printf("    chain:");
+        for (Node *q = n->parent; q; q = q->parent) printf(" %d%s%s[op %.2f bg %08x at %.1f,%.1f %.1fx%.1f r %.1f]", q->id, q->s.overflow_hidden ? "(ovf)" : "", q->s.display_none ? "(none)" : "",
+                                                            q->s.opacity, q->s.bg, q->ax, q->ay, q->w, q->h, q->s.radius);
+        printf("  kids:");
+        for (Node *q = n->first; q; q = q->next) printf(" %d", q->id);
+        printf("\n");
+        printf("    node %d parent %d at %.1f,%.1f %.1fx%.1f prev %.0f,%.0f %.0f,%.0f ovf %d rad %.1f bg %08x op %.2f z %d tf %d/%d blur %.1f\n", n->id, n->parent ? n->parent->id : 0,
+               n->ax, n->ay, n->w, n->h, b.x0, b.y0, b.x1, b.y1, n->s.overflow_hidden, n->s.radius, n->s.bg, n->s.opacity, (int)n->s.z_index, n->own_tf, n->has_tf, n->s.backdrop_blur);
+    }
+}
+
+static int fz_run(int seed, int frames, int pend_pct, int *multi_frames) {
+    rng_state = (uint32_t)seed * 2246822519u + 3;
+    ui_reset();
+    fz_n = 0;
+    Node *root = view(NULL);
+    ui.root = root;
+    sn(root, "backgroundColor", 0xff203040);
+    int init = getenv("FZ_INIT") ? atoi(getenv("FZ_INIT")) : 40;
+    for (int i = 0; i < init; i++) fz_add(root);
+    SimOut o;
+    sim_init(&o);
+    int bad = 0;
+    *multi_frames = 0;
+    for (int f = 0; f < frames; f++) {
+        if (getenv("FZ_LOG")) printf("    frame %d\n", f);
+        fz_step(root);
+        sim_paint_ui(&o, root);
+        if (o.flip_pending) {
+            if ((int)(rnd() % 100) < 50) { o.flip_pending = 0; o.front ^= 1; }
+            else continue;
+        }
+        int nparts = 0;
+        static uint32_t *before;
+        if (getenv("FZ_DEBUG")) { if (!before) before = malloc((size_t)SW * SH * 4); memcpy(before, o.scene, (size_t)SW * SH * 4); }
+        DamageList keep = o.pl;
+        Box keepb = o.pend;
+        Rect r = sim_paint_out(&o, root, &nparts);
+        if (nparts > 1) (*multi_frames)++;
+        int where = 0, worst = sim_full_differs(root, o.scene, &where);
+        /* a frame fails with a pixel off by more than 24 levels (FZ_STRICT: by more than 2; FZ_AREA=n:
+         * with n such pixels); the antialiased edges of a blurred node inside a scaled, unclipped
+         * subtree move a few levels with the subtree's extent (its raster's edge), test_damage_fuzz */
+        if (getenv("FZ_AREA") ? sim_bad_px < atoi(getenv("FZ_AREA")) : !getenv("FZ_STRICT") && !sim_bad_px) worst = 0;
+        if (worst > 2 && getenv("FZ_DEBUG") && !bad) fz_explain(root, &o, before, keep, keepb, where);
+        if (worst > 2) {
+            if (bad < 3) printf("  fuzz seed %d frame %d (%d parts): differs from a full repaint by %d at %d,%d (%d px off by more than 24)\n", seed, f, nparts, worst, where % SW, where / SW, sim_bad_px);
+            bad++;
+        }
+        int bi = sim_present(&o, r, (Rect){ 0, 0, 0, 0 });
+        if (memcmp(o.buf[bi], o.scene, (size_t)SW * SH * 4)) {
+            if (bad < 3) printf("  fuzz seed %d frame %d: the presented buffer differs from the scene\n", seed, f);
+            bad++;
+        }
+        if ((int)(rnd() % 100) < pend_pct) o.flip_pending = 1;
+        else o.front = bi;
+    }
+    sim_free(&o);
+    return bad;
+}
+
+static void test_damage_fuzz(void) {
+    int seeds = getenv("FUZZ_SEEDS") ? atoi(getenv("FUZZ_SEEDS")) : 12, multi = 0, failed = 0;
+    for (int seed = 0; seed < seeds; seed++) {
+        if (getenv("FZ_ONLY") && atoi(getenv("FZ_ONLY")) != seed) continue;
+        paint_multi_damage = getenv("FZ_MULTI") ? atoi(getenv("FZ_MULTI")) : seed % 4 != 3;
+        int m = 0, bad = fz_run(seed, 60, (int[]){ 0, 40 }[seed % 2], &m);
+        multi += m;
+        failed += bad != 0;
+        CHECK(!bad, "damage fuzz seed %d (multi %d): %d frames differ", seed, paint_multi_damage, bad);
+    }
+    printf("damage fuzz: %d seeds, %d frames in several parts, %d seeds failed\n", seeds, multi, failed);
+    paint_multi_damage = 0;
+}
+
 
 /* A row with a fixed child and one that grows (a list item: bullet + text): the growing child's
  * wrapped height is measured at the width it gets, not the whole row's (0.8.2: the last line of a
@@ -1070,6 +1624,8 @@ int main(int argc, char **argv) {
     test_backdrop_band();
     test_multi_damage();
     test_minimize_damage();
+    test_damage_pipeline();
+    test_damage_fuzz();
     test_grow_wrap_height();
     test_overlay_scrollbar();
     printf("engine-test: %d checks, %d failures\n", checks, fails);

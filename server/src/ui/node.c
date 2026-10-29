@@ -120,6 +120,7 @@ void node_moved(Node *n) {
 
 void node_invalidate(Node *n) {
     n->paint_dirty = 1;
+    n->gen++;
     if (n->s.ext) n->s.ext->r.ok = 0;
     if (n->type == NODE_RAW && n->parent) n->parent->paint_dirty = 1;
     invalidate_measure(n);
