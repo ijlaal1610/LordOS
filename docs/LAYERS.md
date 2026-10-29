@@ -116,7 +116,9 @@ blurred into the surface's edges, while a full repaint blurs only what lies belo
 difference stayed until the next full repaint. `test_damage_fuzz` in `build/engine-test` found it
 (random trees through lord-server's whole damage pipeline, every painted frame compared with a full
 repaint). The cost: a repaint that touches the Dock or the menu bar also repaints the band of twice
-the blur radius around it (about 41 px for a 20 px blur; the screen edges cut it).
+the blur radius around it (about 41 px for a 20 px blur; the screen edges cut it). On VM 116 with
+Monitor's moving map, with and without a blurred Terminal over it, layout and paint per frame stayed
+the same within 0.1 ms (MONITOR.md, "The 0.8.2 integration test, repeated").
 
 | | |
 |---|---|

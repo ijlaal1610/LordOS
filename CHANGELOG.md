@@ -257,8 +257,35 @@ of the matching [GitHub release](https://github.com/lordbasex/LordOS/releases), 
     then depended on where the cut fell. `paint_out` now applies the blur rule again to damage gathered over more than
     one frame, on the tree as it is painted (`paint_damage_settle`).
   Which of these was the 0.8.2 report is not proven (the reported scene itself never failed), so several rectangles
-  stay **off by default** (`LORD_DAMAGE=multi`); before turning them on, the 0.8.2 integration test is to be repeated
-  on a VM and the blur margin's cost measured. Built with `make -j8` (no warnings) and `make test` on VM 116.
+  stay **off by default** (`LORD_DAMAGE=multi`). Built with `make -j8` (no warnings), `make test` and
+  `build/engine-test` on VM 116.
+  **Checked on a running desktop** (VM 116, 2026-10-29; `docs/MONITOR.md`, "0.8.6: the search for the grey
+  rectangle"): an isolated headless session of the real default theme at 1280×800 (CPU composition), driven over its
+  remote desktop socket by a viewer that keeps its own copy of the screen from the tiles the session sends every
+  frame, so the copy holds exactly what the partial repaints left. The 0.8.2 scene: Monitor → Network with ten slow
+  downloads to mirrors in ten countries (the map's dots moving), a Terminal at 30 % transparency with blur over the
+  map, minimized into the Dock and restored 22 times, the Terminal's six menus opened and closed, 54 checks per run.
+  At each check a second connection makes the session repaint the whole screen and the two are compared (pixels that
+  changed within 2.2 s before or after are left out as animation; the downloads are paused for the check so the
+  dots are still). Six runs: this commit and the previous `main`, each with one box (the default) and with
+  `LORD_DAMAGE=multi`, and both builds again in the default mode with the scene still for 7 s before each check.
+  **No stale area in any run, before or after**: with the scene still, 0 differing pixels in 54 checks (this commit)
+  and 3 single pixels on the Dock's corner (the previous build); with the scene moving, only Monitor's live numbers
+  and charts that changed between the last partial frame and the full one, a few antialiased pixels of the Dock's
+  corner, whose blur takes in Monitor's live "Load" line (both builds, 1 to 7 pixels), and, in 5 of 108 checks of
+  this commit, a map arc that faded under the blurred Terminal in that gap (at most 3 levels of 255; gone with the
+  scene still). The 0.8.2 grey rectangle did not appear in either build, so it is still not reproduced. **Cost**
+  (the same sessions, one remote viewer, `lord-server` whole process, % of one core, 5 × 30 s, two batches): Monitor
+  → Network 56.7 / 57.2 % before, 58.7 / 59.7 % after (one box) and 59.2 / 58.1 → 57.2 / 58.0 % (several
+  rectangles); with the blurred Terminal over the map 35.8 / 36.4 → 38.0 / 37.7 % and 36.7 / 36.6 → 37.5 / 35.9 %;
+  layout and paint per frame (`LORD_FRAME_STATS`) the same within 0.1 ms in every case (14.6 to 14.8 ms). In these
+  sessions (`--profile`) every frame repainted one box of 64 to 79 % of the screen, also with `LORD_DAMAGE=multi`
+  (the moving dots, Monitor's live numbers and charts on both sides and its footer next to the blurred Dock never
+  stayed several rectangles), so the blur margin adds next to nothing there; the per-frame difference measured in
+  `test_multi_damage` (24,078 → 27,363 px) was not visible at the process level. Why the 0.8.2 VM 119 scene gave 5
+  to 11 rectangles and this one gives one is not investigated.
+  LordBench's desktop mode in the headless harness (three runs each): 58.9-60.0 fps, build p50 1.25-1.26 ms and p99
+  5.9-7.6 ms before; 60.0 fps, p50 1.24-1.27 ms and p99 5.95-6.32 ms after.
 - **The desktop under load** (found by LordBench's desktop test; `docs/BENCHMARK.md`, "The desktop under load"): the
   compositor's cgroup (`server`) had the same `cpu.weight` as every app scope, and nice values don't count between
   cgroups, so an app keeping every core busy took half of the compositor's CPU even at nice 19. On a Raspberry Pi 5

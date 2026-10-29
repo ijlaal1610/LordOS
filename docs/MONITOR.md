@@ -849,11 +849,55 @@ transform; a raster grid that moved with the subtree's extent; a raster changing
 coming in) outside the damage; blurs taking in what is painted above them from outside the
 repainted area; and several frames' rectangles cutting through a blurred node. Which one the 0.8.2
 report was is not proven (the reported scene itself never failed), so `LORD_DAMAGE=multi` is still
-needed to turn the several-rectangles path on. Before turning it on by default: repeat the 0.8.2
-integration test on a VM with `LORD_DAMAGE=multi` (minimize a Terminal over the animating map at
-least 20 times, screenshots after each), and measure the cost of the blur fix (the margin of a
-blurred surface is now repainted with it: in `test_multi_damage` the pixels repainted per frame
-went from 24,078 to 27,363).
+needed to turn the several-rectangles path on. The margin of a blurred surface is now repainted
+with it: in `test_multi_damage` the pixels repainted per frame went from 24,078 to 27,363.
+
+**The 0.8.2 integration test, repeated (VM 116, 2026-10-29).** An isolated headless session of the
+real default theme (own home, runtime folder and bus; 1280×800, CPU composition), driven over its
+remote desktop socket. The viewer subscribes to the video with lossless tiles and keeps its own copy
+of the screen from them; for the test, the VM copy of `mirror.c` sends the changed tiles every frame
+instead of only once the screen is still (`LORD_TEST_TILES`, never committed), so the copy is exactly
+what the partial repaints left. At each check a second connection makes the session repaint the whole
+screen (`cb.refresh`), and the copy before is compared with the copy after; pixels that changed within
+2.2 s before or after are left out as animation. The scene: Monitor → Network with ten slow downloads
+to mirrors in ten countries, a Terminal at 30 % transparency with blur over the map, minimized into the
+Dock and restored 22 times while the dots move, then its six menus; the downloads pause for each check
+(2.5 s, or 7 s for the still runs) so the map stops. 54 checks per run, six runs:
+
+| Build | Mode | Scene at the check | Differing pixels outside Monitor's live numbers |
+|---|---|---|---|
+| previous `main` | one box | still 7 s | 3 (one pixel each, the Dock's corner) |
+| this commit | one box | still 7 s | **0** |
+| previous `main` | one box | still 2.5 s | 1 |
+| this commit | one box | still 2.5 s | 389 (an arc fading under the blurred Terminal, ≤ 3 levels; 2 pixels on the Dock's corner) |
+| previous `main` | several (`multi`) | still 2.5 s | 6 (the Dock's corner) |
+| this commit | several (`multi`) | still 2.5 s | 505 (the arc, ≤ 3 levels; 7 on the Dock's corner) |
+
+No stale area in any run. The Dock's corner pixels (1 to 7, antialiased) change with Monitor's
+"Load" line, which the Dock's blur takes in; the arc is a connection whose line faded between the
+last partial frame and the full one; both are the scene changing between the two copies, and neither
+appears when the scene is still for 7 s. The grey rectangle did not appear in either build, so the
+0.8.2 report is still not reproduced, and several rectangles stay off by default.
+
+Cost, the same sessions with one viewer (`lord-server` whole process, % of one core, 5 × 30 s, two
+batches, the build alternated):
+
+| Scene | Mode | Before | After |
+|---|---|---|---|
+| Monitor → Network, dots moving | one box | 56.7 / 57.2 % | 58.7 / 59.7 % |
+| Monitor → Network, dots moving | several | 59.2 / 58.1 % | 57.2 / 58.0 % |
+| the same with the blurred Terminal over the map | one box | 35.8 / 36.4 % | 38.0 / 37.7 % |
+| the same with the blurred Terminal over the map | several | 36.7 / 36.6 % | 37.5 / 35.9 % |
+
+Layout and paint per frame (`LORD_FRAME_STATS`) were the same within 0.1 ms in every row (14.6 to
+14.8 ms). `--profile` shows why: in these sessions every frame repainted one box of 64 to 79 % of the
+screen, also with `LORD_DAMAGE=multi` (the dots, the live numbers and charts on both sides of the
+window and its footer next to the blurred Dock never stayed several rectangles), so the blur margin
+adds next to nothing; why VM 119's scene gave 5 to 11 rectangles and this one gives one was not
+looked into. Most of the process's CPU here is the remote desktop's frame comparison and the session
+itself, not paint. LordBench's desktop mode in the headless harness (`perf-theme.js`, three runs each):
+58.9–60.0 fps, build p50 1.25–1.26 ms, p99 5.9–7.6 ms before; 60.0 fps, p50 1.24–1.27 ms, p99
+5.95–6.32 ms after.
 
 VM 119: 4 vCPU Xeon Silver 4108 at 1.8 GHz, `virtio` GPU without 3D, CPU compositing, 1280×800.
 Network tab in front, ten slow downloads to mirrors in ten countries (arcs to 8–11 countries, about

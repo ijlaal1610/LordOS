@@ -855,7 +855,9 @@ static void blur_walk(Node *n, int *grew) {
  * blurs taking in what is painted above them from outside the repainted area, and several frames'
  * rectangles cutting through a blurred node (paint_damage_settle). Each one could leave a stale
  * area until something repainted it, with one box or several; which one the 0.8.2 report was is
- * not proven, so the switch stays off until it is tried again on the VM. */
+ * not proven. The 0.8.2 scene was tried again on VM 116 (docs/MONITOR.md) with both modes and no
+ * stale area appeared, before or after these fixes: the report is still not reproduced, so the
+ * switch stays off. */
 int paint_multi_damage = 0;
 static Box drects[DAMAGE_MAX];
 static int ndrects;
