@@ -273,16 +273,28 @@ int main(void) {
     CHECK(c0.freq_mhz == 2400 && c0.freq_max_mhz == 4200 && !strcmp(c0.governor, "powersave"), "cpufreq");
     CHECK(c0.on_battery == 1 && c0.battery_pct == 25, "battery %d %d (a mouse's battery ignored)", c0.on_battery, c0.battery_pct);
     CHECK(lb_cond_battery_low(&c0), "below 30 %% on battery: refused");
-    CHECK(c0.rpi_throttled == -1, "no Pi firmware");
-    CHECK(!lb_cond_stop(&c0, &c0, 1), "nothing to stop at 61 °C");
+    CHECK(c0.rpi_throttled == -1 && c0.rpi_uv_alarm == -1 && !c0.rpi, "no Pi firmware");
+    {
+        LbRpiWatch pw;
+        lb_rpi_watch_start(&pw, &c0);
+        CHECK(!pw.rpi && !pw.seen && !lb_rpi_watch(&pw, &c0), "not a Pi: no firmware events");
+    }
+    CHECK(!lb_cond_stop(&c0, &c0, 0, 1), "nothing to stop at 61 °C");
     put("/sys/class/thermal/thermal_zone0/temp", "93500\n");
     lb_cond_read(root, &c1);
-    CHECK(lb_cond_stop(&c0, &c1, 0) && !strcmp(lb_cond_stop(&c0, &c1, 0), "thermal"), "within 2 °C of passive: thermal");
+    CHECK(lb_cond_stop(&c0, &c1, 0, 0) && !strcmp(lb_cond_stop(&c0, &c1, 0, 0), "thermal"), "within 2 °C of passive: thermal");
+    put("/sys/class/thermal/thermal_zone0/temp", "85000\n");
+    lb_cond_read(root, &c1);
+    {
+        LbRpiWatch pw;
+        lb_rpi_watch_start(&pw, &c0);
+        CHECK(!lb_rpi_watch(&pw, &c1) && !lb_cond_stop(&c0, &c1, 0, 1), "not a Pi: 85 °C is no firmware limit");
+    }
     put("/sys/class/thermal/thermal_zone0/temp", "70000\n");
     put("/sys/devices/system/cpu/cpu0/thermal_throttle/core_throttle_count", "5\n");
     lb_cond_read(root, &c1);
-    CHECK(lb_cond_stop(&c0, &c1, 1) && !strcmp(lb_cond_stop(&c0, &c1, 1), "throttled"), "throttle counters grew in a peak test");
-    CHECK(!lb_cond_stop(&c0, &c1, 0), "…recorded but not stopped in the sustained test");
+    CHECK(lb_cond_stop(&c0, &c1, 0, 1) && !strcmp(lb_cond_stop(&c0, &c1, 0, 1), "throttled"), "throttle counters grew in a peak test");
+    CHECK(!lb_cond_stop(&c0, &c1, 0, 0), "…recorded but not stopped in the sustained test");
     put("/sys/class/power_supply/AC/online", "1\n");
     put("/sys/class/power_supply/BAT0/status", "Charging\n");
     lb_cond_read(root, &c1);
@@ -290,30 +302,125 @@ int main(void) {
     unsigned long long busy, total;
     CHECK(!lb_cpu_ticks(root, &busy, &total) && total == 1000 && busy == 150, "/proc/stat %llu/%llu", busy, total);
 
-    /* a Raspberry Pi 5: no passive trip, the firmware's flags, hwmon's under-voltage alarm */
+    /* get_throttled's text, strictly */
+    CHECK(lb_rpi_parse_throttled("0\n") == 0 && lb_rpi_parse_throttled("50005") == 0x50005 && lb_rpi_parse_throttled("0x8000A\n") == 0x8000a,
+          "get_throttled: plain, 0x and upper-case hex");
+    CHECK(lb_rpi_parse_throttled("fffffff0") == 0xf0000, "get_throttled: unknown bits dropped (%#x)", lb_rpi_parse_throttled("fffffff0"));
+    CHECK(lb_rpi_parse_throttled("") < 0 && lb_rpi_parse_throttled("0x") < 0 && lb_rpi_parse_throttled("123456789") < 0 &&
+          lb_rpi_parse_throttled(" 5") < 0 && lb_rpi_parse_throttled("5 ") < 0 && lb_rpi_parse_throttled("-1") < 0 &&
+          lb_rpi_parse_throttled("g") < 0 && lb_rpi_parse_throttled("5\nx") < 0 && lb_rpi_parse_throttled(NULL) < 0,
+          "get_throttled: empty, too long, spaces, signs, other letters and a second line refused");
+
+    /* a Raspberry Pi 5 with the kernel LordOS ships (rpi-6.18.y): no get_throttled, only rpi_volt's alarm (cleared
+     * by the driver every 2 s); no passive trip */
+    LbRpiWatch pw;
+    unsigned ev;
+    snprintf(root, sizeof root, "/tmp/lordbench-pi5-XXXXXX");
+    if (!mkdtemp(root)) return 1;
+    put("/sys/class/thermal/thermal_zone0/type", "cpu-thermal\n");
+    put("/sys/class/thermal/thermal_zone0/temp", "55000\n");
+    put("/sys/class/thermal/thermal_zone0/trip_point_0_type", "critical\n");
+    put("/sys/class/thermal/thermal_zone0/trip_point_0_temp", "110000\n");
+    put("/sys/class/hwmon/hwmon0/name", "rp1_adc\n");
+    put("/sys/class/hwmon/hwmon1/name", "rpi_volt\n");
+    put("/sys/class/hwmon/hwmon1/in0_lcrit_alarm", "0\n");
+    put("/sys/devices/platform/soc@107c000000/soc@107c000000:firmware/uevent", "DRIVER=raspberrypi-firmware\n");
+    lb_cond_read(root, &c0);
+    CHECK(c0.rpi && c0.rpi_throttled == -1 && c0.rpi_uv_alarm == 0, "Pi 5: rpi %d flags %d alarm %d", c0.rpi, c0.rpi_throttled, c0.rpi_uv_alarm);
+    CHECK(c0.passive_c == 0 && c0.critical_c == 110 && c0.on_battery == -1 && c0.battery_pct == -1, "Pi 5: trips, no power_supply");
+    lb_rpi_watch_start(&pw, &c0);
+    CHECK(pw.rpi && !pw.bits && pw.alarm && !pw.seen, "Pi 5: watch started clean");
+    put("/sys/class/hwmon/hwmon1/in0_lcrit_alarm", "1\n");
+    lb_cond_read(root, &c1);
+    ev = lb_rpi_watch(&pw, &c1);
+    CHECK(ev == LB_RPI_UV && !lb_cond_stop(&c0, &c1, ev, 1), "Pi 5: under-voltage during the run: recorded, not a stop (%#x)", ev);
+    put("/sys/class/hwmon/hwmon1/in0_lcrit_alarm", "0\n");
+    lb_cond_read(root, &c1);
+    CHECK(!lb_rpi_watch(&pw, &c1) && (pw.seen & LB_RPI_UV), "Pi 5: the alarm cleared, the under-voltage stays in the run's record");
+    put("/sys/class/hwmon/hwmon1/in0_lcrit_alarm", "yes\n");
+    lb_cond_read(root, &c1);
+    CHECK(c1.rpi_uv_alarm == -1, "Pi 5: an alarm that isn't 0 or 1 is unknown");
+    put("/sys/class/hwmon/hwmon1/in0_lcrit_alarm", "0\n");
+    put("/sys/class/thermal/thermal_zone0/temp", "79900\n");
+    lb_cond_read(root, &c1);
+    ev = lb_rpi_watch(&pw, &c1);
+    CHECK(!ev && !lb_cond_stop(&c0, &c1, ev, 1), "Pi 5: 79.9 °C, below the firmware's limit");
+    put("/sys/class/thermal/thermal_zone0/temp", "81200\n");
+    lb_cond_read(root, &c1);
+    ev = lb_rpi_watch(&pw, &c1);
+    CHECK(ev == LB_RPI_HOT && lb_cond_stop(&c0, &c1, ev, 1) && !strcmp(lb_cond_stop(&c0, &c1, ev, 1), "throttled"),
+          "Pi 5: at 81.2 °C the firmware slows the cores: a peak test stops as throttled");
+    CHECK(!lb_cond_stop(&c0, &c1, ev, 0), "Pi 5: …recorded but not stopped in the sustained test");
+    CHECK(pw.seen == (LB_RPI_UV | LB_RPI_HOT), "Pi 5: the run's record %#x", pw.seen);
+    /* an alarm already set when the run starts may predate it: it counts once seen clear and set again */
+    put("/sys/class/thermal/thermal_zone0/temp", "60000\n");
+    put("/sys/class/hwmon/hwmon1/in0_lcrit_alarm", "1\n");
+    lb_cond_read(root, &c0);
+    lb_rpi_watch_start(&pw, &c0);
+    CHECK(!pw.seen && !lb_rpi_watch(&pw, &c0), "Pi 5: an alarm set at the start isn't the run's");
+    put("/sys/class/hwmon/hwmon1/in0_lcrit_alarm", "0\n");
+    lb_cond_read(root, &c1);
+    lb_rpi_watch(&pw, &c1);
+    put("/sys/class/hwmon/hwmon1/in0_lcrit_alarm", "1\n");
+    lb_cond_read(root, &c1);
+    CHECK(lb_rpi_watch(&pw, &c1) == LB_RPI_UV, "Pi 5: …but it is once cleared and set again");
+
+    /* a Pi without the hwmon module: the device tree still says it's a Pi, so the firmware's temperature limit holds */
+    snprintf(root, sizeof root, "/tmp/lordbench-pidt-XXXXXX");
+    if (!mkdtemp(root)) return 1;
+    put("/sys/class/thermal/thermal_zone0/type", "cpu-thermal\n");
+    put("/sys/class/thermal/thermal_zone0/temp", "82000\n");
+    {
+        char p[512];
+        snprintf(p, sizeof p, "%s/sys/firmware/devicetree/base/compatible", root);
+        put("/sys/firmware/devicetree/base/compatible", "");
+        FILE *f = fopen(p, "w");
+        static const char dt[] = "raspberrypi,5-model-b\0brcm,bcm2712\0";
+        if (f) { fwrite(dt, 1, sizeof dt - 1, f); fclose(f); }
+    }
+    lb_cond_read(root, &c0);
+    lb_rpi_watch_start(&pw, &c0);
+    CHECK(c0.rpi && c0.rpi_uv_alarm == -1 && pw.seen == LB_RPI_HOT, "Pi from the device tree: hot at the start (%#x)", pw.seen);
+    put("/sys/firmware/devicetree/base/compatible", "brcm,bcm2712\n");
+    lb_cond_read(root, &c0);
+    CHECK(!c0.rpi, "another bcm2712 board isn't a Pi");
+
+    /* an older Raspberry Pi kernel with get_throttled (and rpi_volt clearing the sticky bits every 2 s) */
     snprintf(root, sizeof root, "/tmp/lordbench-pi-XXXXXX");
     if (!mkdtemp(root)) return 1;
     put("/sys/class/thermal/thermal_zone0/type", "cpu-thermal\n");
     put("/sys/class/thermal/thermal_zone0/temp", "55000\n");
     put("/sys/class/thermal/thermal_zone0/trip_point_0_type", "critical\n");
     put("/sys/class/thermal/thermal_zone0/trip_point_0_temp", "110000\n");
-    put("/sys/devices/platform/soc/soc:firmware/get_throttled", "0\n");
+    put("/sys/devices/platform/soc/soc:firmware/get_throttled", "20000\n");     /* capped in the 2 s before the run */
     lb_cond_read(root, &c0);
-    CHECK(c0.rpi_throttled == 0 && c0.passive_c == 0 && c0.critical_c == 110, "Pi: flags %d trips %f %f", c0.rpi_throttled, c0.passive_c, c0.critical_c);
-    CHECK(c0.on_battery == -1 && c0.battery_pct == -1, "Pi: no power_supply");
+    lb_rpi_watch_start(&pw, &c0);
+    CHECK(c0.rpi && c0.rpi_throttled == 0x20000 && pw.bits && !pw.alarm && !pw.seen, "Pi: flags %#x, a sticky bit from before the run ignored",
+          c0.rpi_throttled);
     put("/sys/class/thermal/thermal_zone0/temp", "101000\n");
     lb_cond_read(root, &c1);
-    CHECK(lb_cond_stop(&c0, &c1, 0) && !strcmp(lb_cond_stop(&c0, &c1, 0), "thermal"), "Pi: within 10 °C of critical");
-    put("/sys/class/thermal/thermal_zone0/temp", "80000\n");
-    put("/sys/devices/platform/soc/soc:firmware/get_throttled", "50005\n");
+    ev = lb_rpi_watch(&pw, &c1);
+    CHECK(lb_cond_stop(&c0, &c1, ev, 0) && !strcmp(lb_cond_stop(&c0, &c1, ev, 0), "thermal"), "Pi: within 10 °C of critical");
+    put("/sys/class/thermal/thermal_zone0/temp", "70000\n");
+    put("/sys/devices/platform/soc/soc:firmware/get_throttled", "2\n");         /* capped now */
     lb_cond_read(root, &c1);
-    CHECK(c1.rpi_throttled == 0x50005, "Pi flags %#x", c1.rpi_throttled);
-    CHECK(lb_cond_stop(&c0, &c1, 1) && !strcmp(lb_cond_stop(&c0, &c1, 1), "throttled"), "Pi: throttled now");
-    put("/sys/devices/platform/soc/soc:firmware/get_throttled", "50000\n");     /* only "since boot" bits */
-    put("/sys/class/hwmon/hwmon0/name", "rpi_volt\n");
-    put("/sys/class/hwmon/hwmon0/in0_lcrit_alarm", "1\n");
+    ev = lb_rpi_watch(&pw, &c1);
+    CHECK(ev == LB_RPI_CAPPED && !strcmp(lb_cond_stop(&c0, &c1, ev, 1), "throttled"), "Pi: frequency capped now: throttled (%#x)", ev);
+    put("/sys/devices/platform/soc/soc:firmware/get_throttled", "0\n");
     lb_cond_read(root, &c1);
-    CHECK(!lb_cond_stop(&c0, &c1, 1) && (c1.rpi_throttled & LB_RPI_UV), "Pi: past events and under-voltage recorded, not a stop (%#x)", c1.rpi_throttled);
+    lb_rpi_watch(&pw, &c1);
+    put("/sys/devices/platform/soc/soc:firmware/get_throttled", "c0000\n");     /* throttled and soft limit, between two reads */
+    lb_cond_read(root, &c1);
+    ev = lb_rpi_watch(&pw, &c1);
+    CHECK(ev == (LB_RPI_THROTTLED | LB_RPI_SOFTTEMP) && lb_cond_stop(&c0, &c1, ev, 1), "Pi: sticky bits set during the run count (%#x)", ev);
+    put("/sys/devices/platform/soc/soc:firmware/get_throttled", "10000\n");     /* under-voltage only */
+    lb_cond_read(root, &c1);
+    ev = lb_rpi_watch(&pw, &c1);
+    CHECK(ev == LB_RPI_UV && !lb_cond_stop(&c0, &c1, ev, 1), "Pi: under-voltage alone is no stop (%#x)", ev);
+    CHECK(pw.seen == (LB_RPI_UV | LB_RPI_CAPPED | LB_RPI_THROTTLED | LB_RPI_SOFTTEMP | LB_RPI_HOT), "Pi: the run's record (101 °C was hot too) %#x", pw.seen);
+    put("/sys/devices/platform/soc/soc:firmware/get_throttled", "50005 junk\n");
+    lb_cond_read(root, &c1);
+    CHECK(c1.rpi_throttled == -1 && !lb_rpi_watch(&pw, &c1), "Pi: a malformed get_throttled is unknown, not an event");
 
     /* ---- boot history ---- */
     char bt[] = "/tmp/lordbench-boots-XXXXXX";

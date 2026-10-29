@@ -66,6 +66,22 @@ export function comparableReferences(res) {
 
 const throttled = (c) => c && c.rpiThrottled != null && (c.rpiThrottled & 0x7) !== 0;
 
+// The Raspberry Pi firmware during the run (res.piFirmware, server/src/bench/lbrun.c and lbcond.h): what it
+// reported between the start and the end, not since boot. `flags` says get_throttled was readable (capped,
+// throttled and softLimit are known only then); `voltageAlarm` that rpi_volt's under-voltage alarm was; tempLimit
+// is the hottest zone at or above the firmware's documented limit (tempLimitC). Results from before it have only
+// the end's rpiThrottled bits.
+export const PI_FIRMWARE_EVENTS = ['underVoltage', 'capped', 'throttled', 'softLimit', 'tempLimit'];
+export function piFirmware(res) {
+  const pf = res && res.piFirmware;
+  if (!pf || typeof pf !== 'object') return null;
+  return {
+    flags: pf.flags === true, voltageAlarm: pf.voltageAlarm === true,
+    tempLimitC: typeof pf.tempLimitC === 'number' ? pf.tempLimitC : null,
+    events: PI_FIRMWARE_EVENTS.filter((id) => pf[id] === true),
+  };
+}
+
 export function stability(res) {
   if (!res) return { state: 'unknown', notes: [] };
   const notes = [];
@@ -77,8 +93,16 @@ export function stability(res) {
   if (failed.length) warn('measureFailed', { count: failed.length });
   const b = res.before || {}, a = res.after || {};
   if (b.throttleEvents != null && a.throttleEvents != null && a.throttleEvents > b.throttleEvents) warn('throttleSeen', { count: a.throttleEvents - b.throttleEvents });
-  if (throttled(a)) warn('piThrottled');
-  if (a.rpiThrottled != null && (a.rpiThrottled & 1)) warn('underVoltage');
+  const pf = piFirmware(res);
+  if (pf) {
+    const ev = pf.events;
+    if (ev.includes('capped') || ev.includes('throttled') || ev.includes('softLimit')) warn('piThrottled');
+    else if (ev.includes('tempLimit')) warn('piTempLimit', { temp: pf.tempLimitC });
+    if (ev.includes('underVoltage')) warn('underVoltage');
+  } else {
+    if (throttled(a)) warn('piThrottled');
+    if (a.rpiThrottled != null && (a.rpiThrottled & 1)) warn('underVoltage');
+  }
   const s = res.results || {};
   if (s['sustained.start'] && s['sustained.end']) {
     const drop = 1 - s['sustained.end'].value / s['sustained.start'].value;

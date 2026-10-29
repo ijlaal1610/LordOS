@@ -73,9 +73,13 @@ static void hwmon(const char *root, LbCond *c) {
         char p[96], name[24] = "";
         snprintf(p, sizeof p, "/sys/class/hwmon/%s/name", e->d_name);
         if (rd(root, p, name, sizeof name)) continue;
-        if (!strcmp(name, "rpi_volt")) {             /* the Pi's under-voltage alarm */
+        if (!strcmp(name, "rpi_volt")) {
+            /* the Pi firmware's under-voltage alarm (drivers/hwmon/raspberrypi-hwmon.c): GET_THROTTLED's sticky
+             * under-voltage bit, asked every 2 s with the sticky bits cleared each time; "0" or "1" only */
+            char v[8];
             snprintf(p, sizeof p, "/sys/class/hwmon/%s/in0_lcrit_alarm", e->d_name);
-            if (rdl(root, p, 0) == 1) { if (c->rpi_throttled < 0) c->rpi_throttled = 0; c->rpi_throttled |= LB_RPI_UV; }
+            c->rpi = 1;
+            if (!rd(root, p, v, sizeof v) && (!strcmp(v, "0") || !strcmp(v, "1"))) c->rpi_uv_alarm = v[0] - '0';
             continue;
         }
         if (strcmp(name, "coretemp") && strcmp(name, "k10temp") && strcmp(name, "zenpower")) continue;
@@ -125,27 +129,53 @@ static void cpus(const char *root, LbCond *c) {
     rd(root, "/sys/devices/system/cpu/cpu0/cpufreq/scaling_governor", c->governor, sizeof c->governor);
 }
 
-/* the Pi firmware's get_throttled, wherever the firmware node sits (soc:firmware, axi:firmware…) */
+int lb_rpi_parse_throttled(const char *s) {
+    if (!s) return -1;
+    if (s[0] == '0' && (s[1] == 'x' || s[1] == 'X')) s += 2;
+    unsigned long v = 0;
+    int n = 0;
+    for (; *s && *s != '\n'; s++, n++) {
+        int d = *s >= '0' && *s <= '9' ? *s - '0' : *s >= 'a' && *s <= 'f' ? *s - 'a' + 10 : *s >= 'A' && *s <= 'F' ? *s - 'A' + 10 : -1;
+        if (d < 0 || n >= 8) return -1;
+        v = v << 4 | (unsigned long)d;
+    }
+    if (!n || (*s == '\n' && s[1])) return -1;
+    return (int)(v & (LB_RPI_NOW_MASK | LB_RPI_STICKY_MASK));
+}
+
+/* the Pi firmware's get_throttled (drivers/firmware/raspberrypi.c of older Raspberry Pi kernels; the rpi-6.18.y
+ * one LordOS ships has no such file and reports through rpi_volt instead): directly under a platform node or in
+ * its "<node>:firmware" child (soc/soc:firmware, axi/axi:firmware, soc@107c000000/soc@107c000000:firmware) */
 static void rpi(const char *root, LbCond *c) {
     char d[PATH_MAX];
     snprintf(d, sizeof d, "%s/sys/devices/platform", root);
     DIR *dir = opendir(d);
-    if (!dir) return;
-    struct dirent *e;
-    while ((e = readdir(dir))) {
-        if (e->d_name[0] == '.' || strlen(e->d_name) > 64) continue;
-        char p[256], b[32];
-        const char *sub[] = { "", "/soc:firmware", "/axi:firmware" };
-        for (int i = 0; i < 3; i++) {
-            snprintf(p, sizeof p, "/sys/devices/platform/%s%s/get_throttled", e->d_name, sub[i]);
-            if (!rd(root, p, b, sizeof b) && b[0]) {
-                char *end;
-                unsigned long v = strtoul(b, &end, 16);
-                if (end != b) { c->rpi_throttled = (c->rpi_throttled > 0 ? c->rpi_throttled : 0) | (int)(v & 0xf000f); closedir(dir); return; }
+    if (dir) {
+        struct dirent *e;
+        while (c->rpi_throttled < 0 && (e = readdir(dir))) {
+            if (e->d_name[0] == '.' || strlen(e->d_name) > 64) continue;
+            char p[256], b[32];
+            for (int i = 0; i < 2 && c->rpi_throttled < 0; i++) {
+                if (i) snprintf(p, sizeof p, "/sys/devices/platform/%s/%s:firmware/get_throttled", e->d_name, e->d_name);
+                else snprintf(p, sizeof p, "/sys/devices/platform/%s/get_throttled", e->d_name);
+                if (!rd(root, p, b, sizeof b)) c->rpi_throttled = lb_rpi_parse_throttled(b);
             }
         }
+        closedir(dir);
     }
-    closedir(dir);
+    if (c->rpi_throttled >= 0) c->rpi = 1;
+    if (c->rpi) return;
+    /* the device tree's root compatible ("raspberrypi,5-model-b\0brcm,bcm2712\0"), so a Pi without the hwmon
+     * module still gets LB_RPI_HOT */
+    char p[PATH_MAX], b[256];
+    snprintf(p, sizeof p, "%s/sys/firmware/devicetree/base/compatible", root);
+    FILE *f = fopen(p, "re");
+    if (!f) return;
+    size_t n = fread(b, 1, sizeof b - 1, f);
+    fclose(f);
+    b[n] = 0;
+    for (size_t i = 0; i < n; i += strlen(b + i) + 1)
+        if (!strncmp(b + i, "raspberrypi,", 12)) { c->rpi = 1; break; }
 }
 
 static void power(const char *root, LbCond *c) {
@@ -185,6 +215,7 @@ void lb_cond_read(const char *root, LbCond *c) {
     memset(c, 0, sizeof *c);
     c->temp_c = -273;
     c->rpi_throttled = -1;
+    c->rpi_uv_alarm = -1;
     c->on_battery = -1;
     c->battery_pct = -1;
     thermal(root, c);
@@ -260,14 +291,53 @@ const char *lb_storage_kind(const char *root, const char *path) {
     return "unknown";
 }
 
-const char *lb_cond_stop(const LbCond *start, const LbCond *now, int peak) {
+/* this sample's events: the "now" bits, sticky bits set again after being seen clear, the alarm likewise, and
+ * LB_RPI_HOT; a sticky bit or the alarm seen clear leaves the base, so its next setting is new */
+static unsigned rpi_events(LbRpiWatch *w, const LbCond *c) {
+    unsigned ev = 0;
+    if (c->rpi) w->rpi = 1;
+    if (c->rpi_throttled >= 0) {
+        unsigned v = (unsigned)c->rpi_throttled, st = (v & LB_RPI_STICKY_MASK) >> 16;
+        w->bits = 1;
+        ev |= v & LB_RPI_NOW_MASK;
+        ev |= st & ~w->base & 0xfu;
+        w->base &= ~(0xfu & ~st);
+    }
+    if (c->rpi_uv_alarm >= 0) {
+        w->alarm = 1;
+        if (c->rpi_uv_alarm == 1) { if (!(w->base & (LB_RPI_UV << 4))) ev |= LB_RPI_UV; }
+        else w->base &= ~(unsigned)(LB_RPI_UV << 4);
+    }
+    if (c->rpi && c->temp_c >= LB_RPI_FW_TEMP_C) ev |= LB_RPI_HOT;
+    return ev;
+}
+
+void lb_rpi_watch_start(LbRpiWatch *w, const LbCond *c0) {
+    memset(w, 0, sizeof *w);
+    w->rpi = c0->rpi;
+    w->bits = c0->rpi_throttled >= 0;
+    w->alarm = c0->rpi_uv_alarm >= 0;
+    if (c0->rpi_throttled >= 0) w->base = ((unsigned)c0->rpi_throttled & LB_RPI_STICKY_MASK) >> 16;
+    if (c0->rpi_uv_alarm == 1) w->base |= LB_RPI_UV << 4;
+    /* what is happening at the start itself counts: the "now" bits and the temperature */
+    if (c0->rpi_throttled >= 0) w->seen |= (unsigned)c0->rpi_throttled & LB_RPI_NOW_MASK;
+    if (c0->rpi && c0->temp_c >= LB_RPI_FW_TEMP_C) w->seen |= LB_RPI_HOT;
+}
+
+unsigned lb_rpi_watch(LbRpiWatch *w, const LbCond *cn) {
+    unsigned ev = rpi_events(w, cn);
+    w->seen |= ev;
+    return ev;
+}
+
+const char *lb_cond_stop(const LbCond *start, const LbCond *now, unsigned rpi_events, int peak) {
     if (now->temp_c > -270) {
         if (now->passive_c > 0 && now->temp_c >= now->passive_c - 2) return "thermal";
         if (now->passive_c <= 0 && now->critical_c > 0 && now->temp_c >= now->critical_c - 10) return "thermal";
     }
     if (peak) {
         if (start->throttle_known && now->throttle_events > start->throttle_events) return "throttled";
-        if (now->rpi_throttled > 0 && (now->rpi_throttled & (LB_RPI_THROTTLED | LB_RPI_CAPPED | LB_RPI_SOFTTEMP))) return "throttled";
+        if (rpi_events & LB_RPI_SLOWED) return "throttled";
     }
     return NULL;
 }

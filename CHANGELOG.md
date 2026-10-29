@@ -145,15 +145,42 @@ of the matching [GitHub release](https://github.com/lordbasex/LordOS/releases), 
   - **Boot measured:** the Pi 5 reaches the login screen on its monitor 5.99 s after the kernel starts (systemd: 2.1 s
     kernel + 4.2 s userspace).
   - **Pi limitation:** the LordOS Pi kernel exposes neither the firmware's `get_throttled` nor a cpufreq cooling
-    device, so LordBench's stop on throttling can't fire there (the under-voltage alarm is read); the sustained curve
-    and the temperature are the evidence instead.
+    device, so the firmware's own flags can't be seen there (the under-voltage alarm is read); the sustained curve
+    and the temperature are the evidence instead, and the firmware's documented 80 °C limit now counts as
+    throttling (next item).
+  - **The Raspberry Pi firmware's throttling during a run** (`bench/lbcond.c`, `bench/lbrun.c`; `docs/BENCHMARK.md`,
+    "The Raspberry Pi firmware's throttling"; tested on fake sysfs trees and VM 116, **not yet run on a real Pi**).
+    Checked in Raspberry Pi's `rpi-6.18.y` source, the kernel LordOS ships: `drivers/firmware/raspberrypi.c` has no
+    `get_throttled` file any more, and the `rpi_volt` hwmon (`drivers/hwmon/raspberrypi-hwmon.c`, a module in
+    `bcm2712_defconfig`) asks the firmware every 2 s with the sticky bits cleared and exposes only
+    `in0_lcrit_alarm` (0444), "under-voltage in the last 2 s"; the capped, throttled and soft-limit bits are not
+    exposed without the mailbox, which LordBench never opens. So lord-server now: reads the alarm strictly (`0` or
+    `1`); still reads `get_throttled` where an older kernel has it, strictly (1-8 hex digits, optional `0x`,
+    `lb_rpi_parse_throttled`, masked to bits 0-3 "now" and 16-19 "has occurred"; anything else is unknown instead of
+    being half-parsed); knows a Pi from that hwmon, that file or the device tree's `raspberrypi,` compatible; and on a
+    Pi counts the hottest zone at or above 80 °C as the firmware's limit (Raspberry Pi documents progressive Arm
+    throttling from 80 °C; the Pi 5's thermal zone has no passive trip, so before this the guard waited for 100 °C).
+    Every guard sample of the run (once a second) is accumulated (`lb_rpi_watch`): "now" bits and the 80 °C limit
+    always count, while a sticky bit or alarm already set at the start counts only after it was seen clear and set
+    again, so an event from before the run is never blamed on it. Before, the alarm and the bits were only looked at
+    in the start and end snapshots, so an under-voltage in the middle of a run was lost. In a peak test, capped,
+    throttled, soft limit or the 80 °C limit stop the run as `throttled` (like the x86 counters); in the sustained
+    test the first one is recorded as `throttleAtS`/`throttleTempC`; under-voltage is never a stop and is recorded
+    on its own. A result on a Pi carries `piFirmware` (`flags`, `voltageAlarm`, `underVoltage`, `capped`,
+    `throttled`, `softLimit`, `tempLimit`, `tempLimitC`; what could not be read is left out, not `false`), and
+    `before`/`after` add `rpiUnderVoltageAlarm`. System Information → Performance: the Stability verdict uses
+    `piFirmware` for "The board reports throttling", a new "It reached 80 °C, where the board's firmware starts
+    slowing the processor down" and "The board reports low supply voltage" (older results keep the end's bits), and
+    Conditions has a new **Board firmware** row (en, es, pt). Machines that are not a Pi are unchanged.
   - **Tests:** `tests/lordbench_test.c` (records, workloads, fake sysfs trees of an x86 laptop and a Pi 5, boot
     history, the frame recorder and its pointer latency, the synthetic pointer's thread and eventfd, the video
     records, the boot test state file, the interface scene with every style key known, each paragraph shaped with no
-    missing glyph and the same twice, the sandbox self-test's records; 1,178 checks) and
-    `tests/sysinfo_perf_test.mjs` (55 checks, with the desktop verdict, the pointer latency notes, the video
-    category, the self-test in the stability verdict with and without Landlock, and the engine workloads compared
-    only within one LordOS version).
+    missing glyph and the same twice, the sandbox self-test's records, the Pi firmware's flags and alarm on a Pi 5 with
+    LordOS's kernel, a Pi known from its device tree and an older kernel with `get_throttled`, and the strict
+    `get_throttled` parser; 1,198 checks) and
+    `tests/sysinfo_perf_test.mjs` (62 checks, with the desktop verdict, the pointer latency notes, the video
+    category, the self-test in the stability verdict with and without Landlock, the engine workloads compared
+    only within one LordOS version, and `piFirmware` in the stability verdict).
   - **Not built yet:** hardware video decoding and the x86 PC reference.
 - **Flatpak and Flathub design review, kept for the future** (`docs/FLATPAK.md`, no code; the maintainer decided on
   2026-10-27 not to implement Flatpak for now, to keep the system stable, and it is not planned for any release): a

@@ -1,7 +1,7 @@
 // sysinfo_perf_test.mjs — LordBench's model (apps/sysinfo/perf.js, 0.8.6): ratios against the reference
 // machines, category means, the stability and compatibility verdicts, comparisons with the previous
 // result and the conditions that differ. Run by tests/run_suites.sh (needs node).
-import { CATEGORIES, DESKTOP_CATEGORIES, SANDBOX_TRIES, ENGINE_IDS, desktopVerdict, REFERENCES, ratio, categoryRatios, comparableReferences, stability, compatibilityVerdict, conditionDiffs, changes, sustainedSeries, refreshBudget, fileName } from '../../apps/sysinfo/perf.js';
+import { CATEGORIES, DESKTOP_CATEGORIES, SANDBOX_TRIES, ENGINE_IDS, desktopVerdict, REFERENCES, ratio, categoryRatios, comparableReferences, stability, compatibilityVerdict, conditionDiffs, changes, sustainedSeries, refreshBudget, fileName, piFirmware } from '../../apps/sysinfo/perf.js';
 
 let n = 0, bad = 0;
 const eq = (what, got, want) => {
@@ -48,6 +48,17 @@ eq('thermal stop', stability(res({ status: 'stopped', stopReason: 'thermal' })).
 eq('throttle counters grew', stability(res({ before: { throttleEvents: 2 }, after: { throttleEvents: 5 } })).notes, [{ id: 'throttleSeen', vars: { count: 3 } }]);
 eq('Pi throttling and under-voltage', stability(res({ after: { rpiThrottled: 0x50005 } })).notes.map((x) => x.id), ['piThrottled', 'underVoltage']);
 eq('Pi: only past events', stability(res({ after: { rpiThrottled: 0x50000 } })).state, 'pass');
+// the Pi firmware during the run (piFirmware), which replaces the end's bits when present
+const pi5 = (over) => ({ flags: false, voltageAlarm: true, underVoltage: false, tempLimit: false, tempLimitC: 80, ...over });
+eq('Pi 5: nothing during the run', stability(res({ piFirmware: pi5({}) })), { state: 'pass', notes: [] });
+eq('Pi 5: under-voltage during the run', stability(res({ piFirmware: pi5({ underVoltage: true }) })).notes.map((x) => x.id), ['underVoltage']);
+eq('Pi 5: the firmware temperature limit', stability(res({ piFirmware: pi5({ tempLimit: true }) })).notes, [{ id: 'piTempLimit', vars: { temp: 80 } }]);
+eq('Pi: capped with flags, limit not said twice', stability(res({ piFirmware: { flags: true, voltageAlarm: false, underVoltage: true, capped: true, throttled: false, softLimit: false, tempLimit: true, tempLimitC: 80 } })).notes.map((x) => x.id),
+  ['piThrottled', 'underVoltage']);
+eq('Pi: piFirmware wins over the end\'s bits', stability(res({ after: { rpiThrottled: 0x5 }, piFirmware: pi5({}) })).state, 'pass');
+eq('piFirmware events', piFirmware(res({ piFirmware: { flags: true, voltageAlarm: true, underVoltage: true, capped: false, throttled: 'yes', softLimit: true, tempLimit: false, tempLimitC: 80 } })),
+  { flags: true, voltageAlarm: true, tempLimitC: 80, events: ['underVoltage', 'softLimit'] });
+eq('piFirmware: not a Pi', piFirmware(res()), null);
 eq('sustained dropped 20 %', stability(res({ results: { 'sustained.start': { value: 50 }, 'sustained.end': { value: 40 } } })).notes, [{ id: 'sustainedDrop', vars: { pct: 20 } }]);
 eq('not quiet', stability(res({ quiet: { quiet: false, busyPct: 37.4 } })).notes, [{ id: 'notQuiet', vars: { pct: 37 } }]);
 // the helper-sandbox self-test

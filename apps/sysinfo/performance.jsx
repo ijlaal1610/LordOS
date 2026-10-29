@@ -11,7 +11,7 @@ import {
   View, Text, ScrollView, Button, useTheme, useLocale, GroupBox, FormRow, Segmented, formatNumber, spacing, typeScale, fs, userDirs, wm, admin, session,
 } from '@lordos/sdk';
 import { useEffect, useMemo, useState } from 'react';
-import { CATEGORIES, DESKTOP_CATEGORIES, ratio, categoryRatios, comparableReferences, stability, compatibilityVerdict, desktopVerdict, conditionDiffs, changes, sustainedSeries, fileName } from './perf.js';
+import { CATEGORIES, DESKTOP_CATEGORIES, ratio, categoryRatios, comparableReferences, stability, compatibilityVerdict, desktopVerdict, conditionDiffs, changes, sustainedSeries, fileName, piFirmware } from './perf.js';
 import { startScene } from './scene.jsx';
 import { compatibility } from './model.js';
 
@@ -118,6 +118,11 @@ function Conditions({ res }) {
   const temp = (c) => (c.tempC != null ? tr('sysinfo.perf.tempC', { v: formatNumber(c.tempC, 0) }) : '');
   const trips = [b.passiveC ? tr('sysinfo.perf.passive', { v: formatNumber(b.passiveC, 0) }) : '', b.criticalC ? tr('sysinfo.perf.critical', { v: formatNumber(b.criticalC, 0) }) : ''].filter(Boolean).join(' · ');
   const ds = ((res.session && res.session.displays) || []).map((d) => (d.mode ? `${d.mode.w}×${d.mode.h} @ ${formatNumber(d.mode.refresh / 1000, 0)} Hz${d.scale && d.scale !== 100 ? ` (${d.scale} %)` : ''}` : '')).filter(Boolean).join(', ');
+  // a Raspberry Pi: what its firmware reported during the run; "none" says what could be watched
+  const pf = piFirmware(res);
+  const pfVars = { temp: formatNumber((pf && pf.tempLimitC) || 80, 0) };
+  const pfText = !pf ? '' : pf.events.length ? pf.events.map((id) => tr(`sysinfo.perf.pi.${id}`, pfVars)).join(', ')
+    : tr(pf.flags ? 'sysinfo.perf.pi.none' : pf.voltageAlarm ? 'sysinfo.perf.pi.noneVoltage' : 'sysinfo.perf.pi.noneTemp', pfVars);
   return (
     <GroupBox title={tr('sysinfo.perf.conditions')} footer={tr('sysinfo.perf.conditionsFooter')}>
       <Row label={tr('sysinfo.perf.c.versions')} value={`LordOS ${res.lordos} · ${tr('sysinfo.perf.kernel', { v: res.kernel })} · LordBench ${res.lordbench}`} />
@@ -125,6 +130,7 @@ function Conditions({ res }) {
       <Row label={tr('sysinfo.perf.c.quiet')} value={tr(res.quiet && res.quiet.quiet ? 'sysinfo.perf.quietYes' : 'sysinfo.perf.quietNo', { pct: formatNumber((res.quiet && res.quiet.busyPct) || 0, 0), s: formatNumber((res.quiet && res.quiet.waitedS) || 0, 0) })} />
       <Row label={tr('sysinfo.perf.c.temps')} value={[temp(b) && tr('sysinfo.perf.startEnd', { a: temp(b), b: temp(a) || '—' }), trips].filter(Boolean).join(' · ')} />
       <Row label={tr('sysinfo.perf.c.power')} value={[tr(`sysinfo.perf.power.${b.power || 'unknown'}`), b.batteryPct != null ? `${b.batteryPct} %` : '', b.platformProfile || ''].filter(Boolean).join(' · ')} />
+      {pf ? <Row label={tr('sysinfo.perf.c.piFirmware')} value={pfText} /> : null}
       <Row label={tr('sysinfo.perf.c.cpufreq')} value={[b.governor, b.freqMaxMHz ? tr('sysinfo.perf.maxMHz', { v: formatNumber(b.freqMaxMHz, 0) }) : ''].filter(Boolean).join(' · ')} />
       <Row label={tr('sysinfo.perf.c.gpu')} value={[res.gpuKind ? tr(`sysinfo.perf.gpuKind.${res.gpuKind}`) : '', res.session && res.session.renderer].filter(Boolean).join(' · ')} />
       <Row label={tr('sysinfo.perf.c.displays')} value={[ds, res.session && res.session.composition ? tr('sysinfo.perf.composition', { c: res.session.composition }) : ''].filter(Boolean).join(' · ')} />

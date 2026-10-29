@@ -326,10 +326,54 @@ development package.
   (a device's own battery, such as a mouse's, is ignored) and mains. A run is refused on battery below
   30 %, waits for 10 s in a row below 15 % CPU (at most 30 s, then it runs marked "busy"), stops within
   2 °C of the passive trip point (or 10 °C of the critical one when there is no passive), and in the peak
-  tests stops when the throttle counters grow or the Pi says it is throttling now; in the sustained test
-  throttling is recorded with its time and temperature instead. The kind of disk under the scratch file
-  is recorded (NVMe, SD/eMMC, SSD, HDD, USB, virtual, or RAM in the live session). Unit tests on fake
-  sysfs trees (`tests/lordbench_test.c`): an x86 laptop on battery, a Raspberry Pi 5.
+  tests stops when the throttle counters grow or the Pi firmware slowed the processor during the run (below);
+  in the sustained test throttling is recorded with its time and temperature instead. The kind of disk under
+  the scratch file is recorded (NVMe, SD/eMMC, SSD, HDD, USB, virtual, or RAM in the live session). Unit tests
+  on fake sysfs trees (`tests/lordbench_test.c`): an x86 laptop on battery, a Raspberry Pi 5 with the kernel
+  LordOS ships, a Pi known only from its device tree, and an older Pi kernel with `get_throttled`.
+- **The Raspberry Pi firmware's throttling** (0.8.6 in development, 2026-10-28; `bench/lbcond.c`, not yet run
+  on a real Pi). On a Pi the firmware itself lowers the ARM clock on under-voltage, at its temperature limit
+  or when the clock is capped, and cpufreq may not show it. What the kernel tells an unprivileged process,
+  checked in Raspberry Pi's `rpi-6.18.y` source (the branch `tools/rpi/build-kernel.sh` builds;
+  `bcm2712_defconfig` has `CONFIG_SENSORS_RASPBERRYPI_HWMON=m`):
+  - `drivers/firmware/raspberrypi.c` on that branch has **no** `get_throttled` file: it only asks the firmware
+    for GET_THROTTLED once to decide whether to register the `raspberrypi-hwmon` device. (Older Raspberry Pi
+    kernels had a `get_throttled` attribute under the firmware node; the 2026-10-27 run on the Pi 5 found
+    none, as the source says.)
+  - `drivers/hwmon/raspberrypi-hwmon.c` (hwmon `rpi_volt`) asks GET_THROTTLED every 2 s **with the sticky bits
+    cleared each time** (request value `0xffff`) and exposes one file, `in0_lcrit_alarm` (mode 0444): bit 16,
+    "under-voltage has occurred", of the last answer. So it means "under-voltage in the last 2 s window".
+  - The frequency-capped, throttled and soft-limit bits are not exposed at all on this kernel; reading them
+    would need the mailbox (`/dev/vcio`, `vcgencmd`), which LordBench never opens or runs.
+
+  So lord-server reads, world-readable and without exec or root: `rpi_volt`'s `in0_lcrit_alarm` (exactly `0`
+  or `1`, anything else is unknown); `get_throttled` where a kernel has it (directly under a
+  `/sys/devices/platform` node or its `<node>:firmware` child; 1-8 hex digits with an optional `0x` and a
+  newline, nothing else, `lb_rpi_parse_throttled`; masked to the eight known bits: 0 under-voltage now, 1 ARM
+  frequency capped now, 2 throttled now, 3 soft temperature limit now, 16-19 the same "has occurred"); and
+  whether the machine is a Pi at all (that hwmon, that file, or a `raspberrypi,` entry in the device tree's
+  root `compatible`). On a Pi, the hottest zone at or above **80 °C** counts as the firmware's limit
+  (`LB_RPI_HOT`): Raspberry Pi's documentation says the Arm cores are progressively throttled between 80 and
+  85 °C, and the Pi 5's kernel thermal zone has no passive trip point that would show it (only the 110 °C
+  critical one, so the thermal guard alone would wait until 100 °C).
+
+  Every guard sample (once a second, also during the video jobs and the desktop run) goes through
+  `lb_rpi_watch`: the "now" bits and `LB_RPI_HOT` always count; a sticky bit or the alarm already set when
+  the run starts may predate the run, so it counts only once it has been seen clear and then set again (with
+  the 2 s clearing this happens within one window; on a kernel that never clears them, an event from before
+  the run is never blamed on it). In a peak test, frequency capped, throttled, soft limit or the 80 °C limit
+  stops the run as `throttled`, like the x86 counters; in the sustained test the first one is recorded as
+  `throttleAtS`/`throttleTempC`. Under-voltage is never a stop: it is recorded on its own. The result gets
+  `piFirmware` on a Pi: `{flags, voltageAlarm, underVoltage, capped, throttled, softLimit, tempLimit,
+  tempLimitC}`, where `flags`/`voltageAlarm` say what was readable, `underVoltage` is present only when one of
+  them was, and `capped`/`throttled`/`softLimit` only with `flags` (unknown is left out, never `false`).
+  `before`/`after` keep the raw `rpiThrottled` bits and add `rpiUnderVoltageAlarm`. System Information →
+  Performance: the Stability verdict warns "The board reports throttling" (capped, throttled, soft limit),
+  "It reached 80 °C, where the board's firmware starts slowing the processor down", and "The board reports low
+  supply voltage" from `piFirmware` (older results keep using the end's bits), and Conditions gets a "Board
+  firmware" row listing what happened, or what was watched when nothing did. Machines that are not a Pi get no
+  `piFirmware` and behave as before. Not verified on a real Pi yet: that the alarm reads `1` during an actual
+  under-voltage, and how fast the Pi 5 reaches 80 °C without a cooler in the peak tests.
 - **Helper-sandbox self-test** (`sec.helper-sandbox`, repeated inside `lord-bench`, `sandbox_tries` in
   `bench/lbmain.c`): right after `sandbox_apply_helper` and before any work, in every mode, `lord-bench` tries six
   things that must fail: the Sandbox Probe's helper tries (`app/probe.c`) with its own versions of the data-folder
@@ -400,7 +444,8 @@ video decoding H.264 1080p 258 fps, HEVC 1080p 246, VP9 1080p 204, AV1 1080p 159
 encoders H.264 75 fps and VP8 55 fps. A Quick run took 34 s. On this kernel the firmware's `get_throttled` file and
 a cpufreq cooling device are not exposed, so firmware throttling can't be seen during a run (the stop on
 throttling does not fire on the Pi; the `rpi_volt` under-voltage alarm is read); the sustained curve and the
-temperature are the evidence that it did not throttle.
+temperature are the evidence that it did not throttle. (Since then the alarm is watched during the whole run and
+the firmware's documented 80 °C limit counts as throttling on a Pi: "The Raspberry Pi firmware's throttling" above.)
 
 Desktop impact:
 

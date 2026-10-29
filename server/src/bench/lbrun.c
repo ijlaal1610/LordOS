@@ -106,6 +106,7 @@ typedef struct {
     double sample_t[MAX_SAMPLES], sample_v[MAX_SAMPLES], sample_temp[MAX_SAMPLES];
     int nsamples;
     double throttle_at, throttle_temp;
+    LbRpiWatch rpi;                     /* the Pi firmware's under-voltage and throttling during the run */
     double budget_ms, gap_max;          /* desktop: the refresh period and the longest wait between frames */
     int sbx_have[LB_SBX_COUNT], sbx_refused[LB_SBX_COUNT], sbx_errno[LB_SBX_COUNT];    /* the helper-sandbox self-test */
 } Res;
@@ -124,6 +125,7 @@ static void cond_json(HBuf *b, const LbCond *c) {
     if (c->critical_c > 0) hb_printf(b, "\"criticalC\":%.1f,", c->critical_c);
     if (c->throttle_known) hb_printf(b, "\"throttleEvents\":%lu,", c->throttle_events);
     if (c->rpi_throttled >= 0) hb_printf(b, "\"rpiThrottled\":%d,", c->rpi_throttled);
+    if (c->rpi_uv_alarm >= 0) hb_printf(b, "\"rpiUnderVoltageAlarm\":%d,", c->rpi_uv_alarm);
     if (c->freq_mhz > 0) hb_printf(b, "\"freqMHz\":%.0f,", c->freq_mhz);
     if (c->freq_max_mhz > 0) hb_printf(b, "\"freqMaxMHz\":%.0f,", c->freq_max_mhz);
     if (c->governor[0]) { hb_printf(b, "\"governor\":"); hb_str(b, c->governor); hb_printf(b, ","); }
@@ -152,6 +154,15 @@ static char *build_result(const Job *j, int st, const char *why, const Res *r, c
     cond_json(&b, c0);
     hb_printf(&b, ",\"after\":");
     cond_json(&b, c1);
+    if (r->rpi.rpi) {                   /* a Raspberry Pi: what its firmware reported during the run (lbcond.h) */
+        const LbRpiWatch *w = &r->rpi;
+        hb_printf(&b, ",\"piFirmware\":{\"flags\":%s,\"voltageAlarm\":%s", w->bits ? "true" : "false", w->alarm ? "true" : "false");
+        if (w->bits || w->alarm) hb_printf(&b, ",\"underVoltage\":%s", (w->seen & LB_RPI_UV) ? "true" : "false");
+        if (w->bits)
+            hb_printf(&b, ",\"capped\":%s,\"throttled\":%s,\"softLimit\":%s", (w->seen & LB_RPI_CAPPED) ? "true" : "false",
+                      (w->seen & LB_RPI_THROTTLED) ? "true" : "false", (w->seen & LB_RPI_SOFTTEMP) ? "true" : "false");
+        hb_printf(&b, ",\"tempLimit\":%s,\"tempLimitC\":%.0f}", (w->seen & LB_RPI_HOT) ? "true" : "false", LB_RPI_FW_TEMP_C);
+    }
     hb_printf(&b, ",\"storage\":{\"kind\":\"%s\",\"mb\":%u}", storage, storage_mb);
     hb_printf(&b, ",\"gpuKind\":\"%s\"", r->gpu_kind == 0 ? "hardware" : r->gpu_kind == 1 ? "virtual" : r->gpu_kind == 2 ? "software" : "");
     hb_printf(&b, ",\"sandbox\":%d", r->sandbox);
@@ -299,10 +310,11 @@ static const char *guard(Guard *g) {
     g->next = bench_now_ms() + 1000;
     LbCond cn;
     lb_cond_read("", &cn);
-    const char *s = lb_cond_stop(&g->c0, &cn, !g->sustained);
     Res *r = g->r;
+    unsigned ev = lb_rpi_watch(&r->rpi, &cn);          /* the Pi firmware's reports, accumulated over the run */
+    const char *s = lb_cond_stop(&g->c0, &cn, ev, !g->sustained);
     if (g->sustained && r->throttle_at < 0 &&
-        ((g->c0.throttle_known && cn.throttle_events > g->c0.throttle_events) || (cn.rpi_throttled > 0 && (cn.rpi_throttled & (LB_RPI_THROTTLED | LB_RPI_CAPPED | LB_RPI_SOFTTEMP))))) {
+        ((g->c0.throttle_known && cn.throttle_events > g->c0.throttle_events) || (ev & LB_RPI_SLOWED))) {
         r->throttle_at = r->nsamples ? r->sample_t[r->nsamples - 1] : 0;
         r->throttle_temp = cn.temp_c;
     }
@@ -396,6 +408,7 @@ static void *run(void *arg) {
     r->gpu_kind = -1;
     r->throttle_at = -1;
     lb_cond_read("", &c0);
+    lb_rpi_watch_start(&r->rpi, &c0);
     c1 = c0;
     g.c0 = c0;
     g.r = r;
@@ -571,6 +584,7 @@ finish:
     if (disk >= 0) close(disk);
     lb_cond_read("", &c1);
     if (r) {
+        lb_rpi_watch(&r->rpi, &c1);
         if (!why && st == ST_FAILED) why = "helper";
         if (st == ST_FAILED && why && !strcmp(why, "battery")) st = ST_STOPPED;
         char *json = build_result(j, st, why, r, &c0, &c1, busy_pct, waited, quiet, threads, storage, storage_mb,
