@@ -12,6 +12,9 @@ of the matching [GitHub release](https://github.com/lordbasex/LordOS/releases), 
 
 ### Release
 
+- **Docs** (2026-10-28): `FANS.md` no longer says the Cooling fans turn in this build (the `transform` key the
+  engine lacks; fixed in development), and `RASPBERRY.md` records that frame rates on the Pi 5's monitor were measured
+  by LordBench (two monitors and 4K still not).
 - **The 0.8.6 plan** (2026-10-28): `docs/ROADMAP.md` has a "Release 0.8.6 (in development)" section listing what is
   built and what is left for LordBench and for the desktop under load on the Pi 5.
 

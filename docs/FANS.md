@@ -171,7 +171,9 @@ config and socket); the unit never passes them.
   renders): the Argon ONE V5 case (aluminium body, fins, the blower, front ports), a Raspberry Pi 5
   with a heatsink and fan, a PC tower with a CPU cooler and case fans, or a passive heatsink when no
   fan can be driven. Light and dark variants (`docs/polish/fans-*.png`).
-- The fan turns at a speed proportional to the real duty (eased; still at 0 %), and the fins warm
+- The fan is meant to turn at a speed proportional to the real duty (eased; still at 0 %; in this build it
+  stays still, because the rotors are set through a `transform` style key the engine doesn't have; fixed in
+  development with the `rotate` key, not released), and the fins warm
   from blue (40 °C) through amber (65 °C) to orange-red (80 °C). The rotors are turned with
   `lord.setStyle` on their nodes at 20 frames per second, with no React render per frame; the timer
   stops at 0 %, while the window is minimized and with **Appearance → Reduce motion** (a new
