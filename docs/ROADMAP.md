@@ -497,7 +497,7 @@ Details in `MAIL.md`. Tested on VM 123 against local Dovecot, Postfix and Radica
 - [ ] Edit a single occurrence of a repeating event; create calendars/address books on the server.
 - [ ] CJK multibyte charsets; S/MIME and OpenPGP; QRESYNC.
 
-## Pending before the final ISO
+## Before the final ISO ✅ (all done; shipped in 0.8.0)
 
 - [x] **Mail, Calendar, Contacts and Reminders** (see "M9 — Mail, Calendar, Contacts and
   Reminders" above and `MAIL.md`).
@@ -568,8 +568,8 @@ LordBench and a desktop that stays smooth under load. Each item is described in 
 desktop fell to 24 fps under an all-core load:
 - [x] The compositor's cgroup CPU weight and its real-time priority (main and paint threads at `SCHED_RR` 2): the
   main thread no longer waits for a CPU; 24 → 29–30 fps on the Pi 5.
-- [x] Black squares at a dragged window's rounded corners (also in 0.8.5) fixed, with its own test (branch
-  `perf-frame`).
+- [ ] Black squares at a dragged window's rounded corners (also in 0.8.5): fixed with its own test on branch
+  `perf-frame`, not merged yet (still there on `main`, CPU and GPU paths).
 - [ ] The frame-cost work on branch `perf-frame`, not merged yet: steps 0–11 (pixel-identical except the approved
   1-LSB corner change), the dragged window composited on the GPU ("G0", step 10) with its self-test and
   `LORD_GPU_VERIFY`, LordBench's per-frame phase timing (CPU-late or GPU-late per frame, G0 refusals by cause), G0
@@ -683,7 +683,8 @@ desktop fell to 24 fps under an all-core load:
   - [x] Checks part 2: the Sandbox Probe tries what must fail (app sandbox, helper sandbox, broker, scope; 2026-10-26);
   - [ ] a connection refused by the per-app firewall (an app with network access and a temporary rule);
   - [x] reports: the Report tab with the exact text, Copy and Save to Documents (2026-10-26);
-  - [ ] first real reports from the Pi 5 with a monitor and the RX 580 PC.
+  - [ ] first real reports from the RX 580 PC, and a full report from the Pi 5 with a monitor (LordBench has measured
+    the Pi 5 on its monitor, `BENCHMARK.md`; System Information's report from it is not published yet).
   - [ ] from the live USB without installing: a *Check this computer* boot entry, reports marked
     live, nothing written to the computer's disks, saved to a removable drive; the installer shows
     the Compatibility summary before installing.
@@ -755,7 +756,7 @@ desktop fell to 24 fps under an all-core load:
   into the helper; VM 116: 37.0 and 39.9 fps, 619 and 3,595 runs/s), and the helper-sandbox self-test inside
   `lord-bench` (six tries that must fail, checked by the Stability verdict and `lordos-sysreport bench`). Left:
   hardware video decoding, the x86 PC reference, measuring the Pi 5 with the interface workloads (its reference
-  lists them as not measured), and the rest of what it found on the Pi 5 (the desktop fell to 24 fps under load;
+  lists them as not measured), detecting the Pi 5 firmware's throttling, and the rest of what it found on the Pi 5 (the desktop fell to 24 fps under load;
   the compositor's CPU weight and its real-time priority fix it on VM 116; on the Pi 5 with its monitor they take it
   to 29–30 fps and the frame's own build time under load, 15–16 ms instead of 7, is what remains to find,
   `BENCHMARK.md` "The desktop under load").

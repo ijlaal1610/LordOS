@@ -63,7 +63,7 @@ Ausente a propósito: cualquier protocolo que le permita a una app capturar la p
 
 **¿Y las apps que solo usan X11?** Desde LordOS 0.8.3 Beta se abren con Xwayland, que arranca solo cuando una se conecta, con el marco de ventana del tema, su ícono en el Dock y el portapapeles compartido. Tienen la misma identidad por app, el mismo firewall y la misma atribución en el Monitor que las apps Wayland; las apps con restricciones de dispositivos o de archivos no reciben pantalla X. Se probaron XTerm, una app Java Swing y un juego SDL.
 
-**¿Y Flatpak?** Hoy LordOS no lo usa ni lo integra. Una sección de Flathub está planeada para la 0.8.6, cuando las apps de Flatpak puedan seguir el modelo de LordOS: su propia identidad en el firewall y en el Monitor, sus permisos en Ajustes → Privacidad y los avisos propios de LordOS.
+**¿Y Flatpak?** Hoy LordOS no lo usa ni lo integra. No está planeado para ninguna versión: para mantener el sistema estable no se está construyendo, y en `docs/FLATPAK.md` queda una revisión del diseño para el futuro, con lo que las apps de Flatpak necesitarían para seguir el modelo de LordOS (su propia identidad en el firewall y en el Monitor, sus permisos en Ajustes → Privacidad y los avisos propios de LordOS).
 
 **¿Y apps como Chrome o Spotify?** (desde 0.8.5) Tienda → Comerciales instala apps gratis cuyo código fuente no es público desde los repositorios firmados de sus fabricantes, con la clave que fija LordOS, y lo avisa antes de instalar nada.
 

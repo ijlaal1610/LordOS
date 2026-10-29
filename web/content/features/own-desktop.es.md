@@ -80,7 +80,7 @@ El compositor maneja varias pantallas a la vez, extendidas o en espejo, y dibuja
 
 - **Las GPU reales todavía no están verificadas.** El camino por GPU se probó con el renderizador por software de Mesa en máquinas virtuales. Falta probar en placas AMD y Nvidia reales (`docs/GPU.md`).
 - **Las pantallas múltiples se probaron con dos salidas virtuales**, no con monitores reales, paneles de notebook ni hubs DisplayPort (`docs/DISPLAYS.md`).
-- **La Raspberry Pi 5 todavía no se probó con un monitor conectado.** La compilación, las pruebas y la pantalla de ingreso corrieron en una placa real sin HDMI (`docs/RASPBERRY.md`).
+- **La Raspberry Pi 5 solo se probó con un monitor HDMI.** Desde la 0.8.4.1 la imagen muestra la pantalla de ingreso y el escritorio en un monitor HDMI desde el primer arranque, y LordBench la midió así; dos monitores y 4K todavía no se probaron en la placa (`docs/RASPBERRY.md`).
 - **Las apps X11 funcionan con Xwayland desde 0.8.3,** nítidas solo al 100 % de escala y pudiendo verse entre sí, como en cualquier escritorio X11. Arrastrar y soltar entre apps de Linux y los métodos de entrada de LordOS dentro de apps de Linux están pendientes (`docs/WAYLAND.md`).
 - **La accesibilidad está mayormente por delante:** hoy hay un ajuste de "reducir movimiento"; un lector de pantalla, el zoom y el alto contraste están en la hoja de ruta.
 

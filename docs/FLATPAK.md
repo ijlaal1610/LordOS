@@ -3,8 +3,8 @@
 **Status (2026-10-27): design review kept for the future; not planned for any release.** On 2026-10-27 the
 maintainer decided not to implement Flatpak for now, to keep the system stable and avoid the complexity and
 future problems it would add; this document stays as the reference if that is ever reconsidered. No code has
-been written and nothing below is built. The roadmap item ([ROADMAP.md](ROADMAP.md), "Flatpak and Flathub (0.8.6, approved by the
-maintainer on 2026-10-27; needs a design review before code)") asks for a Flathub section in the
+been written and nothing below is built. The roadmap item ([ROADMAP.md](ROADMAP.md), "Flatpak and Flathub (future, undecided; not planned for
+any release)"; when it was written it was planned for 0.8.6) asks for a Flathub section in the
 Store without giving up LordOS's security model. This document goes through the four problems the
 roadmap lists, gives the options for each with their trade-offs against `AGENTS.md`, recommends
 one, and lists exactly which new exceptions the maintainer has to approve before any code is

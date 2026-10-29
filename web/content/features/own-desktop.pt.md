@@ -2,9 +2,9 @@
 
 O LordOS é uma distribuição GNU/Linux baseada no Debian 13. O que o torna diferente é o desktop: em vez de trazer o GNOME ou o KDE, o LordOS tem um ambiente de desktop próprio, construído a partir dos seus componentes fundamentais sobre o Debian e o Wayland.
 
-[[shot:0]]
-
 Pense numa casa. O Debian e o kernel Linux são a fundação, o encanamento e a fiação: são reaproveitados, bem testados e mantidos por uma grande comunidade. O LordOS constrói os cômodos onde você de fato vive: a tela que você vê, as janelas que você move, os apps que você abre e os guardas nas portas.
+
+[[shot:0]]
 
 [[diagram:layers]]
 
@@ -80,7 +80,7 @@ O compositor controla várias telas ao mesmo tempo, estendidas ou espelhadas, e 
 
 - **GPUs reais ainda não foram verificadas.** O caminho da GPU foi exercitado com o renderizador por software do Mesa em máquinas virtuais. O teste em placas AMD e Nvidia reais ainda está pendente (`docs/GPU.md`).
 - **Várias telas foram testadas com duas saídas virtuais**, não com monitores reais, painéis de notebook ou hubs DisplayPort (`docs/DISPLAYS.md`).
-- **O Raspberry Pi 5 ainda não foi testado com um monitor conectado.** A compilação, os testes e a tela de login rodaram numa placa real sem HDMI (`docs/RASPBERRY.md`).
+- **O Raspberry Pi 5 só foi testado com um monitor HDMI.** Desde a 0.8.4.1 a imagem mostra a tela de login e o desktop num monitor HDMI desde o primeiro boot, e o LordBench o mediu assim; dois monitores e 4K ainda não foram testados na placa (`docs/RASPBERRY.md`).
 - **Os apps X11 rodam pelo Xwayland desde a 0.8.3,** nítidos só em 100 % de escala e podendo ver uns aos outros, como em qualquer desktop X11. Arrastar e soltar entre apps Linux e os métodos de entrada do LordOS dentro de apps Linux estão pendentes (`docs/WAYLAND.md`).
 - **A acessibilidade ainda está quase toda pela frente:** hoje existe um ajuste para "reduzir movimento"; leitor de tela, zoom e alto contraste estão no roadmap.
 

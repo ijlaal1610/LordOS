@@ -169,7 +169,8 @@ of the matching [GitHub release](https://github.com/lordbasex/LordOS/releases), 
   manages (`CG_SERVER_CPU_WEIGHT`, `sec/cgroup.c`). LordBench's desktop test under load on the Pi 5 without its
   monitor, two runs each: 43–45 → 56–57 frames per second, late frames 31–33 % → 7–8 %, pointer to screen 32–33 →
   22 ms median and 67–75 → 52–53 ms for the slowest 1 %; nothing changes without load. Checked on VM 116 that a new
-  session gets the weight. Not yet measured with the Pi's monitor and GPU composition. A 0.5 ms scheduler time slice
+  session gets the weight. On the Pi's monitor with GPU composition the weight was measured only together with the
+  real-time priority (next entry). A 0.5 ms scheduler time slice
   for the compositor's threads was also tried (it was in the previous commit) and removed: measured alone, it made no
   difference; its first numbers had been inflated because the test tool also gave the slice to the load. What
   remains is described there.
@@ -203,6 +204,41 @@ of the matching [GitHub release](https://github.com/lordbasex/LordOS/releases), 
   binaries and whose errors are ignored, so that package shipped every binary with its symbols (17 MB
   instead of 11 MB, the same files). It now uses `aarch64-linux-gnu-strip` when it packages arm64 on another
   architecture, and stops if it is missing.
+- **Public docs corrected ahead of 0.8.6** (a read-only audit, each finding checked against the code and the
+  measurements):
+  - **Paper (en, es, pt; `docs/PAPER.md` regenerated):** §7.2 no longer says a dragged window's rounded corners stopped
+    turning black on the monitor; it says what the 0.8.5 fix did (on the GPU path only pixels inside an app surface are
+    taken for a Linux window's hole) and that small black squares can still show at the corners, on the CPU and GPU
+    paths. §10.2 lists them as a known limitation (fixed in development on the `perf-frame` branch, not released), and
+    the remote-desktop line no longer says the monitor shows them right. §7.4: the board results are "without a monitor
+    unless stated", and the CPU weight alone is said to have been measured on the monitor only together with the
+    real-time priority (it said the monitor measurement was pending, then gave it). The PDF/Markdown header writes the
+    organisation as iPERFEX, as in `meta.json` (`web/lib/papermd.mjs` no longer upper-cases it).
+  - **FAQ (en, es, pt):** "about thirty native apps" instead of "more than 35" (the paper says thirty-one); memory given
+    as the paper measured it (`lord-server` about 50 MB in a user session) instead of an unsourced "120 MB idle
+    session"; the Raspberry Pi 5 answers say the image shows the desktop on an HDMI monitor since 0.8.4.1 and that two
+    monitors and 4K are what is untested; "KDBX files" instead of a brand name; the LordBench answer says the desktop
+    under load is being fixed (as without load on VM 116; 24 → 29–30 fps on the Pi 5 with its monitor, the rest still
+    in progress) instead of "already fixed", and a doubled word in Spanish is gone.
+  - **Features (en, es, pt):** Linux apps no longer says a Flathub section is planned for 0.8.6 (Flatpak is not planned
+    for any release; `docs/FLATPAK.md`); A desktop of its own says the Pi 5 has been tested with one HDMI monitor (not
+    with two or 4K) instead of never with a monitor; Private by design adds `lord-fetch`, `lord-tls` and `lord-bench` (in
+    development) to the sandboxed helpers; the Portuguese page puts its screenshot where the other two do.
+  - **`docs/BENCHMARK.md`:** the status lists what is built (interface and video workloads, desktop-impact mode, boot
+    test, `lordos-sysreport bench`, two of three references) and what is not (the x86 PC reference, a `checks`
+    subcommand); the CLI diagram shows `report | fetch | bench`; the design table notes xz instead of deflate and
+    software-only video decoding; the Pi 5 reference is the 16 GB board; the desktop test's turning element stays still
+    in this build (there is no `transform` style key; fixed in development with a `rotate` key); the Quick-run times
+    (33 s, then 39 s and 46 s from a terminal) are told apart; "not yet measured with the monitor" and "about 20 %
+    slower" are replaced by what was measured (a frame takes 15–16 ms instead of 7 ms under load, cause not measured).
+  - **`docs/ROADMAP.md`:** the black-corners item under Release 0.8.6 is unticked (fixed on `perf-frame`, not merged);
+    "Pending before the final ISO" is marked done; LordBench's "Left:" adds detecting the Pi 5 firmware's throttling;
+    the Pi 5 report item says what is still missing. `docs/FLATPAK.md` points to the roadmap item's current title.
+  - **`docs/PAPER-VALIDATION.md`:** the Pi 5 load result is recorded as measured on the monitor with both changes;
+    one Full and four Quick runs; 34 folders in `apps/`.
+  - **`README.md`:** the "Measured, not promised" numbers are labelled as the pre-release 0.7.0 ISO test and joined by
+    the released 0.8.5-beta's (592 MB whole system, first frame 7.4 s after the kernel); the repository map adds
+    `lord-bench` (in development).
 
 ## [0.8.5-beta] - 2026-10-27
 

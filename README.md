@@ -40,9 +40,12 @@ Linux apps you already use (Chromium, Firefox, GTK and Qt apps) run alongside th
 | **AI apps in the Store** | A curated catalog: Claude Code, Claude Desktop, Visual Studio Code, Cursor, Codex CLI, goose, opencode, and llama.cpp and whisper.cpp to run models on your own computer, each from a pinned, verified source. The Store downloads over HTTPS. |
 | **System Information** | Every piece of hardware and what LordOS makes of it, a report you can read before you copy it, and checks that try LordOS's security claims on your own computer. |
 
-Measured, not promised: the whole system idles at **465–487 MB of RAM**, of which `lord-server`
-(the display server with the whole desktop) is **32–36 MB**, and boots in about **16 s** (see
-[`docs/ISO.md`](docs/ISO.md), "Final ISO test"). What is isolated today, exactly, is in
+Measured, not promised: on the final ISO test before the first release (a 0.7.0 build, 2026-10-18) the
+whole system idled at **465–487 MB of RAM**, of which `lord-server` (the display server with the whole
+desktop) was **32–36 MB**, and booted in about **16 s** (see [`docs/ISO.md`](docs/ISO.md), "Final ISO
+test"). The released 0.8.5-beta, updated in place on a VMware VM with GPU composition, used **592 MB** for
+the whole system about five minutes after sign-in and showed its first frame **7.4 s** after the kernel
+started ([`results/0.8.5-beta/vmware-fusion`](results/0.8.5-beta/vmware-fusion)). What is isolated today, exactly, is in
 [`docs/PRIVACY.md`](docs/PRIVACY.md).
 
 ## Get LordOS
@@ -79,7 +82,7 @@ Status: **beta**. See [`CHANGELOG.md`](CHANGELOG.md) and [`docs/ROADMAP.md`](doc
 - `server/`: `lord-server` (display server and Wayland compositor: DRM/KMS and evdev straight
   from the kernel, without X11, libdrm or libinput) plus `lord-sessiond`, `lord-netd`,
   `lord-netperm`, `lord-fand` and the sandboxed helpers (`lord-media`, `lord-doc`, `lord-vault`,
-  `lord-maild`, `lord-fetch`, `lord-tls`).
+  `lord-maild`, `lord-fetch`, `lord-tls`, and LordBench's `lord-bench`, in development for 0.8.6).
 - `runtime/`: `@lordos/runtime`, the React renderer for lord-server.
 - `sdk/`: `@lordos/sdk`, the API for themes and apps.
 - `apps/`: the native apps. See [`apps/README.md`](apps/README.md).

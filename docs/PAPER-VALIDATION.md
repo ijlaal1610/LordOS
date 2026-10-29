@@ -57,7 +57,7 @@ memory from a process's RSS (§7.1) and points to versioned results (§11.5, `do
 | 4.2 | Shaping identical to HarfBuzz on 409 of 409 sentences | Test (`shape-test`, `hb_compare.py` in `test-full`) | Holds |
 | 4.2, 7.4 | NEON loops bit-identical to C | Test (`canvas-test` on the Pi) | Holds |
 | 4.4 | English, Spanish, Portuguese; keys and brand names checked | Test (`tools/i18n-check.mjs`) | Holds |
-| 5.1 | About thirty native apps | Count | 33 in `apps/`, System Information and its hidden probe included; the 0.8.5 edition says thirty-one (without the live installer and the hidden probe) |
+| 5.1 | About thirty native apps | Count | 34 in `apps/`, System Information and its hidden probe included; the 0.8.5 edition says thirty-one (without the live installer and the hidden probe) |
 | 5.2 | `.lpk` limits: 2,000 files, 64 MB | Test (`pkg-test`, `sign-test`) | Holds |
 | 5.3 | InRelease signatures, plans equal to apt's in 12 cases | Test (`pkg-test`, `engine-test`) | Holds |
 | 5.3 | Downloads over HTTP even for HTTPS sources | `lord-tls` (0.8.5) fetches `https://` sources over HTTPS; the Store's update and installs used it on VM 116 and the VMware machine | **Outdated → corrected in 0.8.5** (2026-10-27: §5.3 now says HTTPS since 0.8.5) |
@@ -106,9 +106,9 @@ memory from a process's RSS (§7.1) and points to versioned results (§11.5, `do
 | 7.2 | — | New in 0.8.5: remote desktop CPU reference (`REMOTE.md`, "Measurements (0.8.5, CPU reference)") | Added in the 0.8.5 edition (§7.2) |
 | 7.3 | GPU benefits on real cards not measured | — | **Untested** |
 | 7.4 | Pi 5: build 1 min 02 s, tests 23/0/0, NEON 2.0–2.3×, idle 36 MB, fan behaviour | Measured once on the Pi | Measured |
-| 7.4 | — | New, 0.8.6 in development: with a 1920×1080 60 Hz monitor, login screen 5.99 s after the kernel starts; desktop 59.4 fps alone (p99 13.0 ms, 1 % late) and 24 fps under a low-priority all-core load (96.5 % late); 3 minutes sustained at 5.9 GFLOP/s, 55.6 °C; software video decoding per codec. LordBench on the Pi (`BENCHMARK.md`, "Built so far") | Measured with LordBench (one run each); the load result led to a fix (compositor CPU weight: 31–33 % → 7–8 % late without the monitor), to re-measure on the monitor |
+| 7.4 | — | New, 0.8.6 in development: with a 1920×1080 60 Hz monitor, login screen 5.99 s after the kernel starts; desktop 59.4 fps alone (p99 13.0 ms, 1 % late) and 24 fps under a low-priority all-core load (96.5 % late); 3 minutes sustained at 5.9 GFLOP/s, 55.6 °C; software video decoding per codec. LordBench on the Pi (`BENCHMARK.md`, "Built so far") | Measured with LordBench (one run each); the load result led to two fixes (compositor CPU weight: 31–33 % → 7–8 % late without the monitor; with the real-time priority, measured on the monitor: 24 → 28.9–30.5 fps, still 94–98 % late, the frame's build time under load still to explain) |
 | 7.5 | No measurements on real PCs | — | **Untested** |
-| 7.5 | — | New, 0.8.6 in development: LordBench's interface workloads on VM 116 (layout and paint 37.0/39.9 fps, shaping 619/3,595 runs/s; compared only within the same LordOS version) and the helper-sandbox self-test (six tries, all refused on VM 116: seccomp `EPERM`, Landlock `EACCES`) (`BENCHMARK.md`, "Built so far") | Measured with LordBench (one Full and three Quick runs); not yet on the Pi 5 |
+| 7.5 | — | New, 0.8.6 in development: LordBench's interface workloads on VM 116 (layout and paint 37.0/39.9 fps, shaping 619/3,595 runs/s; compared only within the same LordOS version) and the helper-sandbox self-test (six tries, all refused on VM 116: seccomp `EPERM`, Landlock `EACCES`) (`BENCHMARK.md`, "Built so far") | Measured with LordBench (one Full and four Quick runs); not yet on the Pi 5 |
 
 ## §10–§11 Limits and verification
 

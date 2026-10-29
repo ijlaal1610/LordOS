@@ -1,6 +1,6 @@
 # System Information, LordBench and hardware reports (proposal)
 
-**Status: design proposal. Built and released in 0.8.5-beta (2026-10-27; see "Work plan for 0.8.5" below): the collector, `lordos-sysreport report|fetch`, the System Information app (Overview, Hardware, Compatibility, Checks, Report), the Sandbox Probe and the shared measurement library `server/src/bench`. LordBench (0.8.6) is in development: the `lord-bench` helper, its CPU, memory, GPU, storage and sustained workloads, the guards and System Information's Performance tab are built (see "Built so far" under 0.8.6); the desktop-impact mode, the compositor and video workloads and two of the three reference machines are not. Community reports (0.8.7) and the `checks`/`bench` subcommands of `lordos-sysreport` are not built.** It plans three releases and a later stage:
+**Status: design proposal. Built and released in 0.8.5-beta (2026-10-27; see "Work plan for 0.8.5" below): the collector, `lordos-sysreport report|fetch`, the System Information app (Overview, Hardware, Compatibility, Checks, Report), the Sandbox Probe and the shared measurement library `server/src/bench`. LordBench (0.8.6) is in development: the `lord-bench` helper, its CPU, memory, GPU, storage and sustained workloads, the interface (layout, paint, shaping) and video workloads, the desktop-impact mode (the compositor's frames and pointer-to-screen latency under load), the boot test, the guards, `lordos-sysreport bench` and System Information's Performance tab are built, with two of the three reference machines (VM 116 and the Raspberry Pi 5 16 GB; see "Built so far" under 0.8.6); the modest x86 PC reference is not. Community reports (0.8.7) and a `checks` subcommand of `lordos-sysreport` are not built.** It plans three releases and a later stage:
 
 | Release | What |
 |---|---|
@@ -25,7 +25,7 @@ server/src/sysreport/        collector + checks (library, read-only, no root)
 server/src/bench/            LordBench workloads (library)
         │
         ├── lord-server: lord.sysinfo (js_hw.c) → apps/sysinfo        (the app)
-        ├── lordos-sysreport  report | checks | bench [--quick|--full] --json  (CLI, runs as the user)
+        ├── lordos-sysreport  report | fetch | bench [--quick|--full] [--json]  (CLI, runs as the user)
         └── tests (fake sysfs trees, fixtures) and, later, Lumo's tools
 ```
 
@@ -150,11 +150,11 @@ A versioned JSON (`schema: 1`) and a Markdown summary, saved to `~/Documents`:
 
 | Category | Workloads |
 |---|---|
-| CPU, one core and all cores | SHA-256 (`pkg/crypto.c`), deflate, a matrix multiply; LordOS's own work: layout and paint of a fixed scene, shaping a fixed paragraph in several scripts, QuickJS running a fixed script |
+| CPU, one core and all cores | SHA-256 (`pkg/crypto.c`), deflate (built as xz decoding, below), a matrix multiply; LordOS's own work: layout and paint of a fixed scene, shaping a fixed paragraph in several scripts, QuickJS running a fixed script |
 | Memory | bandwidth (copy, triad) and latency (pointer chase) |
 | GPU | offscreen GLES on the render node: fill rate, texture upload, composing N screen-size layers, timed with fences |
 | Compositor | `lord-server`'s own frame counters during a scripted window drag, CPU path and GPU path |
-| Video | short test clips we generate (H.264, HEVC, VP9, AV1; 1080p and 4K) decoded in `lord-media`, hardware and software; the remote desktop's encoders |
+| Video | short test clips we generate (H.264, HEVC, VP9, AV1; 1080p and 4K) decoded in `lord-media`, hardware and software (only software decoding is built, below); the remote desktop's encoders |
 | Storage | sequential and random I/O on a size-limited temporary file (Full only, with a warning on SD cards) |
 | Boot | the seconds from the kernel's start to the first frame on the monitor, recorded by `lord-sessiond` on every boot with the version and build (`/var/lib/lordos/boot-times.jsonl`, built in 0.8.5; [RESULTS.md](RESULTS.md), "Boot time"): LordBench reads that history, shows each version's median and spread over its boots (the first boot after an update apart: it builds caches), and with the user's consent can reboot N times in a row to measure it |
 | Sustained | several minutes of all-core load (Full only) |
@@ -188,12 +188,12 @@ comparison.
 Three separate verdicts, never folded into one score:
 
 - **Performance**: per category, normalized to a set of **reference machines** (initially a
-  Raspberry Pi 5 8 GB, a modest x86 PC and a VM), shown as "×N of reference" for each, so a board
+  Raspberry Pi 5, a modest x86 PC and a VM; the Pi 5 measured is the 16 GB one), shown as "×N of reference" for each, so a board
   and a workstation are each compared with something similar.
 - **Compatibility**: from the Compatibility panel.
 - **Stability**: errors and crashes during the run, frames missed under load, throttling.
 
-### Built so far (in development for 0.8.6, 2026-10-27)
+### Built so far (in development for 0.8.6, 2026-10-27 and 2026-10-28)
 
 Unreleased; the latest release is 0.8.5-beta. Checked on VM 116 (Proxmox VE, 8 vCPU of a Xeon Silver
 4108, 4 GB, virtio disk, no GPU passthrough: Mesa's llvmpipe) from a terminal (`build/lordbench-cli`) and
@@ -288,8 +288,9 @@ development package.
   machine has it (no VA-API on VM 116; the Pi 5's HEVC decoder needs FFmpeg's `v4l2request`, which Debian's FFmpeg
   lacks).
 - **Desktop impact** (its own button, its own result file `lordbench-desktop.json`): after the quiet wait,
-  System Information opens a second window with a scene (cards, shadows and one element that turns through
-  `lord.setStyle`) and lord-server moves that window along a figure of eight through the drag's own path
+  System Information opens a second window with a scene (cards, shadows and one element meant to turn through
+  `lord.setStyle`; in this build it stays still, because the engine has no `transform` style key: fixed in
+  development with a `rotate` key, not merged) and lord-server moves that window along a figure of eight through the drag's own path
   (`lord.wm.script`, `grab_script_begin` in `ui/grab.c`: painted once into a layer, one step per frame, no JS per
   frame). lord-server records every frame it builds and every frame the main display shows (`bench/lbframes.c`,
   from `render()` and the page flips; one atomic read per frame when off): 10 s alone, then 10 s while `lord-bench`
@@ -374,7 +375,8 @@ eight; matrix product 3.3 and 19.9 GFLOP/s; xz 60 and 363 MB/s; QuickJS 57 and 3
 20.0 GB/s, triad 22.8 GB/s, latency 91 ns; llvmpipe: scene 802 fps, fill 407 Mpixel/s, upload 9,457 MB/s,
 8 layers 22.9 fps; virtio disk: 378 MB/s write, 517 MB/s read, 6,256 random reads/s; sustained 19.6 → 19.8
 GFLOP/s; software video decoding H.264 1080p 399 fps, HEVC 1080p 385, VP9 1080p 215, AV1 1080p 201, H.264 4K
-76, HEVC 4K 102; encoders H.264 106 fps and VP8 54 fps at 1080p. A Quick run took 33 s.
+76, HEVC 4K 102; encoders H.264 106 fps and VP8 54 fps at 1080p. A Quick run took 33 s that day; later Quick runs from a terminal
+took 39 s, and 46 s with the interface workloads (below).
 
 VM 116, the interface workloads, Full without sustained or storage, LordBench 1 (2026-10-28, 142 s; its other
 measurements were within 4 % of the run above): layout and paint 37.0 fps on one core (spread 0.2) and 39.9 fps
@@ -386,7 +388,8 @@ or more) are split into bands, so the paint threads gain about 8 %. Three Quick 
 (39 s before). After the review fixes (the shaping threads' shared script table set before they start, a clean
 paint pool for each run; ThreadSanitizer finds nothing in `lb_ui` and `lb_shape` repeated) a fourth Quick run gave
 36.4 fps, 40.6 fps, 631 runs/s and 3,607 runs/s, in 46 s, with all six sandbox tries refused. The reference values
-carry the LordOS version that run reported (`0.8.5-beta`, this branch's `package.json`).
+carry the LordOS version that run reported (`0.8.5-beta`, the version in `package.json` while 0.8.6 is in
+development).
 
 Raspberry Pi 5 16 GB, Full with 180 s sustained, LordBench 1 (2026-10-27, 339 s): SHA-256 933 MB/s on one core
 and 3,693 MB/s on four (the CPU's SHA instructions); matrix product 2.26 and 5.99 GFLOP/s; xz 67 and 254 MB/s;
@@ -442,8 +445,8 @@ compositor and the load in sibling cgroups (user scopes), the weight set on the 
 Alone nothing changes (59.6–60 fps, about 0.2 % late, pointer to screen 15.5–15.8 ms median). The load still got
 2.7–3.4 GFLOP/s done. With the earlier scene (moved by the clock instead of the synthetic pointer) the same change
 took the Pi from 61 % to 35 % late frames, and VM 116 (8 vCPU) from 8.6–17.5 % to 5.6–9.0 % (p99 16.6–24.6 →
-16.4–17.5 ms). **Not yet measured with the monitor and GPU composition on the Pi**, where the 24 fps above came from;
-that needs the new package installed.
+16.4–17.5 ms). The weight alone was not measured with the monitor and GPU composition on the Pi, where the 24 fps above came
+from; it was measured there together with the real-time priority (below).
 
 **Tried and dropped.** A 0.5 ms time slice for the compositor's threads (EEVDF's custom slice, `sched_setattr`):
 it looked like a gain at first, but the tool that set it from outside also gave it to the load; set only on the
@@ -499,8 +502,8 @@ second for a CPU (299 ms per second before the weight). What remains is the fram
 monitor shows every other one (about 30 fps). The cause is not found yet; the load keeps four cores busy with
 matrix products, and the CPU and the GPU share the Pi's memory, but that has not been measured.
 
-**What remains.** The shared memory makes each frame about 20 % slower to build under load on the Pi, which no
-priority fixes; the Pi kernel at `CONFIG_HZ=1000` (`tools/rpi/build-kernel.sh`, a rebuild) is not built.
+**What remains.** Under load a frame takes about twice as long to build on the Pi (15–16 ms instead of 7 ms), for
+a cause not measured yet, which no priority fixes; the Pi kernel at `CONFIG_HZ=1000` (`tools/rpi/build-kernel.sh`, a rebuild) is not built.
 
 Boot: the Pi 5 reaches the login screen on its monitor 5.99 s after the kernel starts (lord-sessiond's record;
 systemd-analyze gives 2.1 s kernel + 4.2 s userspace). Boots where the monitor was connected late took 61 and

@@ -80,7 +80,7 @@ The compositor drives several displays at once, extended or mirrored, and draws 
 
 - **Real GPUs are not verified yet.** The GPU path was exercised with Mesa's software renderer in virtual machines. Testing on real AMD and Nvidia cards is still pending (`docs/GPU.md`).
 - **Multiple displays were tested with two virtual heads**, not with real monitors, laptop panels or DisplayPort hubs (`docs/DISPLAYS.md`).
-- **The Raspberry Pi 5 has not been tested with a monitor attached yet.** The build, the tests and the login screen ran on a real board without HDMI (`docs/RASPBERRY.md`).
+- **The Raspberry Pi 5 has been tested with one HDMI monitor only.** Since 0.8.4.1 the image shows the login screen and the desktop on an HDMI monitor from the first boot, and LordBench measured it there; two monitors and 4K have not been tested on the board yet (`docs/RASPBERRY.md`).
 - **X11 apps run through Xwayland since 0.8.3,** sharp only at 100 % scale and able to see each other, as on any X11 desktop. Drag and drop between Linux apps and LordOS input methods inside Linux apps are pending (`docs/WAYLAND.md`).
 - **Accessibility is mostly ahead of us:** today there is a "reduce motion" setting; a screen reader, zoom and high contrast are on the roadmap.
 
