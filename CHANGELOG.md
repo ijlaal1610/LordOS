@@ -12,6 +12,9 @@ of the matching [GitHub release](https://github.com/lordbasex/LordOS/releases), 
 
 ### Release
 
+- **The 0.8.6 plan** (2026-10-28): `docs/ROADMAP.md` has a "Release 0.8.6 (in development)" section listing what is
+  built and what is left for LordBench and for the desktop under load on the Pi 5.
+
 - **0.8.5-beta published** (2026-10-27): the GitHub release carries the live ISO, the Raspberry Pi 5 image
   (`lordos-0.8.5-rpi5-arm64.img.xz`, the LordOS kernel 6.18.57-lordos.3 for the Pi 5; the Pi 4 still boots Raspberry
   Pi's archive kernel), the amd64 and arm64 packages with their SBOMs, `install.sh` and the three desktop downloads of **LordOS Imager 0.8.5**

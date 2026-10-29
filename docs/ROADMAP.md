@@ -546,8 +546,49 @@ no migration (`UPDATES.md`). What it delivered, each item described in its own d
   and user switch are faster (`SESSIONS.md`); software vblank pacing on drivers that complete flips at
   once (`CHANGELOG.md`, `RESULTS.md`); idle-inhibit for Linux apps (`WAYLAND.md`).
 
-**Next: 0.8.6** — LordBench (item below) and stability. Flatpak and Flathub are not planned for any release (decided by
-the maintainer on 2026-10-27, item below).
+Flatpak and Flathub are not planned for any release (decided by the maintainer on 2026-10-27, item below).
+
+## Release 0.8.6 (in development)
+
+LordBench and a desktop that stays smooth under load. Each item is described in its own document.
+
+**LordBench** (`BENCHMARK.md`; the item under "Before 1.0" has the details):
+- [x] The sandboxed `lord-bench` helper: CPU, memory, GPU, storage and sustained workloads; the thermal, throttle
+  and battery guards; versioned results and System Information → Performance.
+- [x] Video workloads (software decoding, the remote desktop's encoders), the desktop-impact mode, the
+  pointer-to-screen latency, the N-boot test, `lordos-sysreport bench` and the Pi 5 reference.
+- [x] LordOS's own interface work as workloads (`cpu.ui`, `cpu.shape`, fonts built into the helper) and the
+  helper-sandbox self-test inside `lord-bench` (2026-10-28).
+- [ ] The interface workloads measured on the Pi 5 (its reference lists them as not measured).
+- [ ] The x86 PC reference (a modest PC still to be chosen; may move to 0.8.7).
+- [ ] Hardware video decoding (may move after 0.8.6).
+- [ ] Detecting the Pi 5 firmware's throttling.
+
+**The desktop under load** (`BENCHMARK.md`, "The desktop under load"; `GPU.md`). On the Pi 5 with its monitor the
+desktop fell to 24 fps under an all-core load:
+- [x] The compositor's cgroup CPU weight and its real-time priority (main and paint threads at `SCHED_RR` 2): the
+  main thread no longer waits for a CPU; 24 → 29–30 fps on the Pi 5.
+- [x] Black squares at a dragged window's rounded corners (also in 0.8.5) fixed, with its own test (branch
+  `perf-frame`).
+- [ ] The frame-cost work on branch `perf-frame`, not merged yet: steps 0–11 (pixel-identical except the approved
+  1-LSB corner change), the dragged window composited on the GPU ("G0", step 10) with its self-test and
+  `LORD_GPU_VERIFY`, LordBench's per-frame phase timing (CPU-late or GPU-late per frame, G0 refusals by cause), G0
+  textures catching up in slices, and the paint pool turning on for slow whole frames. Pi 5 with its monitor,
+  G0 off: alone 53–58 → 59.8–60 fps, under load 24–25 → 30 fps; with G0 on it stalls (52 fps alone).
+- [ ] Measure that branch on the Pi 5 with the phase timing, then decide G0's default (off with `LORD_G0=1` to turn
+  it on, unless the new run shows no stalls).
+- [ ] Build the next frame while the previous flip is pending (today build, GPU and flip run one after another, so
+  a 13 ms build plus the GPU's work misses the vblank and the rate locks at 30 fps). Estimated, not measured:
+  30 → 52–58 fps under load. Pixels unchanged.
+- [ ] Step 12: G0 for the whole drag, also where the Dock or the menu bar overlap the window.
+- [ ] Optional: cheaper uploads (pixel buffers or a linear canvas), scissoring the GPU composite to the damage,
+  a 1000 Hz kernel tick for the Pi 5.
+- [ ] Merge `perf-frame`, with CHANGELOG, `BENCHMARK.md`, `GPU.md`, `WINDOWS.md`, the paper, the FAQ (on the Pi a
+  busy app still halves the frame rate) and `THIRD_PARTY.md` (the QuickJS `JS_GetMallocSize` patch).
+
+**Release:**
+- [ ] Re-measure the references after the release (results compare only within one LordOS version).
+- [ ] Release cleanup, packages, the Pi 5 image and the ISO, as for 0.8.5.
 
 ## Before 1.0
 
